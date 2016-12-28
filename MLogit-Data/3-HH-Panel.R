@@ -428,7 +428,7 @@ for (yr in year_list){
   cat("Panel year", yr, "Completed!\n\n")
 }
 
-# Get rid of households having less than 10 choice occassions (less than 1% of data, or 8% of the flagged households)
+# Get rid of households having less than 10 choice occassions, very small amount of data
 hh_prod_panel[, sum_quantity:=sum(quantity), by ="household_code"]
 hh_prod_panel = hh_prod_panel[sum_quantity>=10, ]
 hh_prod_panel[, sum_quantity:=NULL]

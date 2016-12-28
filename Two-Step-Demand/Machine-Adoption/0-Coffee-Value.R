@@ -244,7 +244,6 @@ load(paste(output_dir, "/HH-HW-Panel.RData", sep=""))
 setkey(cval_list, household_code, week_end)
 setkey(hw_panel, household_code, week_end)
 hw_market_panel = hw_panel[cval_list, nomatch=0L]
-hw_market_panel = hw_market_panel[wfilter==1, ]
 
 # Load market specific information.
 load("Data/HMS-Summary/DMA-Panel.RData")

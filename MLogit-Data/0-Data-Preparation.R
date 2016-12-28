@@ -78,16 +78,18 @@ invisible(clusterEvalQ(cl,library(nleqslv)))
 
 # Identify the first purchase of Keurig/Other Single Serving Coffee
 # Flag consumers appropriately.
-#source(paste(code_dir, '/1-Identify-HH.R', sep=""))
+source(paste(code_dir, '/1-Identify-HH.R', sep=""), echo=TRUE)
 
-# Impute prices, state, and inventory
+# Impute prices and availability
 source(paste(code_dir, '/2-Retailer-Price-Panel.R', sep=""), echo=TRUE)
 
 # Construct the HH purchase occasssion panel
-#source(paste(code_dir, '/3-HH-Panel.R', sep=""), echo=TRUE)
+source(paste(code_dir, '/3-HH-Panel.R', sep=""), echo=TRUE)
 
+# Household MDC Panel
+source(paste(code_dir, '/4-HH-Market-Panel-MDC.R', sep=""), echo=TRUE)
 
-# Durable good price, and availability
-#source(paste(code_dir, '/3-HW-Price-Availability.R', sep=""))
+# Household Hardware panel
+source(paste(code_dir, '/5-Single-Model-HW', sep=""), echo=TRUE)
 
 #---------------------------------------------------------------------------------------------------#

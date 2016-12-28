@@ -224,7 +224,7 @@ hh_list_keurig[days_to_sfirst < 0, days_to_sfirst:=0]
 hh_list_keurig[days_to_sfirst > 180, days_to_sfirst:=NA]
 hh_list_keurig[, k_first_date := ifelse(is.na(hfirst_date), sfirst_date, hfirst_date)]
 hh_list_keurig[, k_first_date := as.Date(k_first_date, origin = "1970-01-01")]
-hh_list_keurig[, panel_year = year(k_first_date)]
+hh_list_keurig[, panel_year := year(k_first_date)]
 setkeyv(hh_list_keurig, c("household_code", "panel_year"))
 # About 50% Purchase Keurig and Coffee at the same time or software purchase happen earlier than coffee purchase.
 # About 70% Purchase within the first 2 weeks.
@@ -306,6 +306,8 @@ hh_list[, `:=`(imputed_hfirst = hfirst_date, imputed_hlast = hlast_date)]
 hh_list[(sfirst_date - hfirst_date) < -45, `:=`(imputed_hfirst=NA, imputed_hlast=NA)]
 hh_list[(sfirst_date - hfirst_date) > 180, `:=`(imputed_hfirst=NA, imputed_hlast=NA)]
 hh_list[, k_first_date:=imputed_hfirst]
+hh_list[(sfirst_date - hfirst_date)<0&(sfirst_date-hfirst_date)>=(-45), 
+        k_first_date:=sfirst_date]
 
 # create panel year as the first software purchase year
 hh_list[, `:=`(panel_year=year(sfirst_date))]

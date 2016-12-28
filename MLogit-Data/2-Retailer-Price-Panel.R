@@ -59,7 +59,7 @@ dma_rank_list = unique(hh_info_panel[as.integer(kholder)==1, .(household_code, d
 dma_rank_list = dma_rank_list[, .(nhh = .N), by = "dma_code"]
 dma_rank_list = dma_rank_list[order(-nhh), ]
 dma_rank_list[, cumshare := cumsum(nhh/sum(nhh))]
-top_dma_list = dma_rank_list[1:20, dma_code]
+top_dma_list = dma_rank_list[1:30, dma_code]
 
 # See the market share in ground coffee
 dma_ground_list = unique(hh_info_panel[, .(household_code, dma_code)])
