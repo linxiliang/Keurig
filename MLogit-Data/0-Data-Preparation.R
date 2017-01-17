@@ -90,6 +90,6 @@ source(paste(code_dir, '/3-HH-Panel.R', sep=""), echo=TRUE)
 source(paste(code_dir, '/4-HH-Market-Panel-MDC.R', sep=""), echo=TRUE)
 
 # Household Hardware panel
-source(paste(code_dir, '/5-Single-Model-HW', sep=""), echo=TRUE)
+source(paste(code_dir, '/5-Single-Model-HW.R', sep=""), echo=TRUE)
 
 #---------------------------------------------------------------------------------------------------#

@@ -9,7 +9,12 @@
 rm(list = ls())               # Clear workspace
 
 # Markets
-market_code = c(501, 602, 803, 504, 539, 506, 524, 613, 623, 753) # Big Markets
+# market_code = c(501, 506, 504, 602, 803, 511, 539, 623, 618, 505, 
+#                613, 819, 524, 534, 533, 753, 510, 508, 514, 512, 
+#                517, 807, 751, 862, 535, 521, 548, 609, 566, 641) # Big Markets
+market_code = "all"
+sratio = 0.05
+set.seed(123456)
 
 # Load Required packages
 require(Rmpi)
@@ -47,10 +52,10 @@ invisible(clusterEvalQ(cl, library(bayesm)))
 invisible(clusterEvalQ(cl, library(MASS)))
 invisible(clusterEvalQ(cl, library(numDeriv)))
 invisible(clusterEvalQ(cl, library(pracma)))
+
 #---------------------------------------------------------------------------------------------------------#
 #Source the function file
 source(paste(code_dir, 'mdc-functions.R', sep=""))
-invisible(clusterEvalQ(cl, source('~/Keurig/Scripts/Two-Step-Demand/Coffee-Demand/mdc-functions.R')))
 
 # ubar: Implicit ubar function for utility level
 # ll_linear: log-likelihood function for logit model with 
@@ -75,32 +80,19 @@ if (market_code != "all"){
   hh_market_prod = hh_market_prod[household_code%in%hh_in_market, ]
 }
 
+source(paste(code_dir, 'Preprocessing.R', sep=""))
+
 # Reassign hh and t
 setkey(hh_market_prod, household_code, t, brand_descr, keurig, roast, brand_descr_orig)
-hh_index_list = hh_market_prod[, unique(hh)]
 hh_market_prod[, hh := .GRP, by = "hh"]
 setkey(hh_market_prod, hh, t)
 hh_market_prod[, t := .GRP, by = "t"]
 
 # Reset Key
 setkey(hh_market_prod, hh, t, brand, roast)
+hh_code_list = unique(hh_market_prod[, .(hh, household_code)])
 
-# Create the Design Matrix
-bnames = paste0("a", c(2:15))
-for (i in 2:15){
-  npresence = sum(hh_market_prod[, paste0("a", i), with=FALSE])
-  if (npresence<=500) bnames = setdiff(bnames, paste0("a", i))
-}
-BMat = as.matrix(hh_market_prod[, bnames, with=FALSE])
-xnames = c(bnames, "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
-           "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag")
-XMat = as.matrix(hh_market_prod[, xnames, with=FALSE])
-#Create a K matrix to allow different satiation rate for Keurig and Ground 
-KMat = hh_market_prod[, cbind(1-keurig, keurig)]
-
-# Mark the start and end positions of households
-hh_market_prod[, row_i:=1:.N]
-hh_market_prod[, `:=`(start = min(row_i), end = max(row_i)), by = "household_code"]
+# Count number of choice occasions
 hh_market_prod[, `:=`(nt_i = length(unique(t))), by  = "household_code"]
 
 # Obtain the M --- Number of items chosen in the trip
@@ -112,35 +104,58 @@ hh_market_prod[, expenditure := price * size]
 # hh_market_prod[, expenditure := total_price_paid - coupon_value] # correlation is high.
 # Create log price and log expenditure part
 hh_market_prod[, `:=`(lprice=log(price), lexpend=log(expenditure/price+1))]
+hh_full = copy(hh_market_prod)
+
+# Obtain the list of households
+hh_n_list = hh_full[, unique(hh)]
+ncl = length(cl)
+nhsize = ceiling(length(hh_n_list)/ncl)
+
+# Put each chunk of data to the data.table
+for (i in 1:ncl){
+  i_start = (i-1)*nhsize+1
+  i_end = i*nhsize
+  if (i==ncl){
+    i_end = length(hh_n_list)
+  }
+  hh_list = hh_n_list[i_start:i_end]
+  hh_market_prod = hh_full[hh%in%hh_list, ]
+  clusterExport(cl[i], c('hh_list', 'hh_market_prod'))
+}
+
 #---------------------------------------------------------------------------------------------------------#
 # Parameter setting
 # Number of Parameters to be estimated
 nk = ncol(KMat)
 nx = ncol(XMat)
 np = nk+nx # if sigma is estimated, put + 1
-nh = length(hh_market_prod[, unique(hh)])
-nt = length(hh_market_prod[, unique(t)])
+nh = length(hh_full[, unique(hh)])
+nt = length(hh_full[, unique(t)])
 
-# save auxiliary dataset 
-save(xnames, hh_market_prod, nt, nk, nx, np, nh, file = "Asist.RData")
 #---------------------------------------------------------------------------------------------------------#
 # Model Tuning
 # Estimate an homogeneous logit model to use it to tune RW draws
-# b0 = rnorm(np)
-# opt0 = optim(b0, ll_homo, gr = NULL, method = c("BFGS"), control = list(reltol=1e-12))
+b0 = rnorm(np)
+# opt0 = optim(b0, ll_homo, gr = NULL, method = c("BFGS"), control = list(reltol=1e-16))
 # hess = hessian(ll_homo, b0, h = 1e-4)
+# save(opt0, hess, file = paste(input_dir, "/Homo-Hessian.RData", sep=""))
 
 # Evaluate Hessian at Fractional likelihood
-#hess_list = parLapply(cl, 1:nh, ihessfun)
-#---------------------------------------------------------------------------------------------------------#
-invisible(clusterEvalQ(cl, load('Asist.RData')))
-invisible(clusterEvalQ(cl, load('aux.RData')))
+clusterExport(cl, c('xnames', 'll', 'ihessfun', 'input_dir', "nk", "nx", "np", "nh"))
+invisible(clusterEvalQ(cl, setwd("~/Keurig")))
+invisible(clusterEvalQ(cl, load(paste(input_dir, "/HH-Aux-Market.RData", sep=""))))
+invisible(clusterEvalQ(cl, load(paste(input_dir, "/Homo-Hessian.RData", sep=""))))
+# hess_list = clusterEvalQ(cl, lapply(hh_list, ihessfun))
+# hess_list = unlist(hess_list, recursive=F)
+# save(opt0, hess, hess_list, file = paste(input_dir, "/Hessian.RData", sep=""))
+gc()
 
+#---------------------------------------------------------------------------------------------------------#
 # Bayesian Estimation 
 # MCMC Settings
 burnin = 0
-thin   = 3
-draws  = 8000
+thin   = 6
+draws  = 5000
 totdraws = draws*thin + burnin
 
 ## Auxiliary prior settings, and computations
@@ -155,7 +170,8 @@ Dbar = t(rep(0,np));
 s2 = 2.93^2/np;
 
 # Distribute the functions and relevant data to the workers.
-clusterExport(cl, c('s2'))
+invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hessian.RData", sep=""))))
+clusterExport(cl,c('i_ll', 'rwmhd', 's2'))
 
 #Initialize storage of MCMC draws
 bhatd = matrix(rep(0, draws*np), nrow=draws)
@@ -191,7 +207,8 @@ for (d in 1:totdraws){
   
   # Parallel version
   clusterExport(cl, c('sig', 'bhat', 'beta0'))
-  beta_list = parLapply(cl, 1:nh, rwmhd)
+  beta_list = clusterEvalQ(cl, lapply(hh_list, rwmhd))
+  beta_list = unlist(beta_list, recursive=F)
   beta0 = matrix(unlist(beta_list), ncol=np, byrow=TRUE)
   
   cat("Finished drawing", d, "out of", totdraws, ", and total time elapsed:", 

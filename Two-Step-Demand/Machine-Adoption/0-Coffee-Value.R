@@ -11,7 +11,9 @@ rm(list = ls())
 
 coffee_modules      = c(1463)
 maker_modules       = 7755
-big_markets = c(501, 602, 803, 504, 539, 506, 524, 613, 623, 753)
+big_markets = c(501, 506, 504, 602, 803, 511, 539, 623, 618, 505, 
+                613, 819, 524, 534, 533, 753, 510, 508, 514, 512, 
+                517, 807, 751, 862, 535, 521, 548, 609, 566, 641) 
 
 # Load Necessary Packages
 library(parallel)
@@ -110,7 +112,7 @@ retailer_panel[, `:=`(lightR = as.integer(roast==1),
                       medDR = as.integer(roast==3),
                       darkR = as.integer(roast==4),
                       assorted = as.integer(roast==0))]
-setkey(retailer_panel, dma_code, quarter, retailer_code)
+setkey(retailer_panel, dma_code, quarter, retailer_code, week_end)
 
 # Compute the probability of making a purchase
 # Predict probability of purchase once the consumer adopt Keurig
@@ -121,7 +123,7 @@ binomP <- function(form){
 }
 hh_panel = hh_panel[, .(coffee_trip = sum(coffee_trip, na.rm=TRUE), k_first_week_end = k_first_week_end[1], 
                         brand_type_lag = brand_type_lag[1], ptype_lag=ptype_lag[1], inv_type=inv_type[1]),
-                    by = c("household_code", "week_end", "quarter")]
+                    by = c("household_code", "week_end", "quarter", "panel_year")]
 hh_panel[, `:=`(coffee_trip = as.integer(coffee_trip>=1), 
                 keurig_lag = as.integer(grepl("KEURIG",ptype_lag)))]
 hh_panel[is.na(keurig_lag), keurig_lag:=0]
@@ -133,8 +135,8 @@ setkey(hh_panel, household_code, week_end)
 gc()
 
 # Take the last part of markov chain to estimate consumer preferences
-indx = seq(1, 5000, 2)
-load('Data/Bayes-MCMC/MDCEV-MCMC-All.RData')
+indx = seq(1, 2500, 1)
+load('Data/Bayes-MCMC/MDCEV-MCMC-All-90000.RData')
 bindv[, ,27:28] = exp(bindv[, ,27:28])/(1+exp(bindv[, ,27:28]))
 pref = colMeans(bindv[indx, ,], 2)
 rownames(pref) = hh_code_list[, household_code]
@@ -155,7 +157,31 @@ hh_spent = hh_spent[order(row.names(hh_spent)), ]
 pref = pref[order(row.names(pref)), ]
 pref = cbind(pref, hh_spent)
 
-save( hh_trip_prob, retailer_panel, hh_panel, file = "Data/Machine-Adoption/MU-Diff-Asist.RData")
+# Remove household panels with extremely high inventory
+setkey(hh_panel, household_code, panel_year)
+hh_panel = hh_panel[hh[, .(household_code, panel_year, dma_code)], nomatch=0L]
+hh_panel = hh_panel[(is.na(k_first_week_end) | week_end<=k_first_week_end), ]
+hh_panel = hh_panel[inv_type<=600&week_end>="2007-01-01"&dma_code%in%big_markets, ]
+# Drop households who didn't adopt in top markets
+hh_panel[, ftemp := sum(is.na(k_first_week_end)|k_first_week_end==week_end), by ="household_code"]
+hh_panel = hh_panel[ftemp>=1, ]
+hh_panel[, `:=`(ftemp=NULL, dma_code=NULL)]
+
+#Obtain the list of correct households
+hh_code_1 = as.integer(row.names(pref))
+hh_code_2 = hh_panel[, unique(household_code)]
+hh_codes = intersect(hh_code_1, hh_code_2)
+
+# Filter data sets
+hh_panel = hh_panel[household_code %in% hh_codes, ]
+setkey(hh_panel, household_code, week_end)
+hh_trip_prob = hh_trip_prob[panel_year>=2007, ]
+hh_trip_prob = hh_trip_prob[household_code %in% hh_codes, ]
+setkey(hh_trip_prob, household_code, dma_code, quarter, retailer_code)
+retailer_panel = retailer_panel[week_end>="2007-01-01", ]
+setkey(retailer_panel, dma_code, quarter, retailer_code, week_end)
+gc()
+save(hh_trip_prob, retailer_panel, hh_panel, file = "Data/Machine-Adoption/MU-Diff-Asist.RData")
 
 # Compute the adoption value consumer by consumer
 xvars = c(paste0("a", 2:15), "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
@@ -167,10 +193,12 @@ hhValFun<-function(i){
   hh_prob_temp = hh_trip_prob[.(i), ]
   setkey(hh_prob_temp, dma_code, quarter, retailer_code)
   hh_retailers_temp = retailer_panel[hh_prob_temp, nomatch=0L]
+  if (nrow(hh_retailers_temp)==0) return(data.table(NULL))
   setkey(hh_retailers_temp, week_end)
   hh_lags = hh_panel[.(i), ]
   setkey(hh_lags, week_end)
   hh_retailers_temp = hh_retailers_temp[hh_lags[,.(week_end, brand_type_lag, keurig_lag, pprob)], nomatch=0L]
+  if (nrow(hh_retailers_temp)==0) return(data.table(NULL))
   hh_retailers_temp[, `:=`(brand_lag=as.integer(brand_descr%in%brand_type_lag & keurig==keurig_lag),
                            brand_lag_keurig=as.integer(brand_descr%in%brand_type_lag & keurig==keurig_lag)*keurig)]
   hh_retailers_temp[is.na(brand_lag), brand_lag:=0]
@@ -213,11 +241,15 @@ hhValFun<-function(i){
                                                       alpha, zb, price, eps, E)), by = .(idx)]
     uall_cum[dt_v0$idx] = uall_cum[dt_v0$idx] + dt_v0$ubar
     hh_retailers_temp[, `:=`(fil1 = as.integer(U0>max(UE))), by = .(idx, keurig)]
-    dt_v1 = hh_retailers_temp[fil1>=0.9&keurig<=0.1,
-                             .(ubar=eu2(min(UE-0.00001), max(U0+0.00001), 
-                                        alpha, zb, price, eps, E)), by = .(idx)]
-    ugrd_cum[dt_v1$idx] = ugrd_cum[dt_v1$idx] + dt_v1$ubar
-    ugrd_cum[-dt_v1$idx] = ugrd_cum[-dt_v1$idx] + log(E) #no ground, get outside option
+    if (nrow(hh_retailers_temp[fil1>=0.9&keurig<=0.1,])==0){
+      ugrd_cum = ugrd_cum + E #no ground, get outside option
+    } else{
+      dt_v1 = hh_retailers_temp[fil1>=0.9&keurig<=0.1,
+                                .(ubar=eu2(min(UE-0.00001), max(U0+0.00001), 
+                                           alpha, zb, price, eps, E)), by = .(idx)]
+      ugrd_cum[dt_v1$idx] = ugrd_cum[dt_v1$idx] + dt_v1$ubar
+      ugrd_cum[-dt_v1$idx] = ugrd_cum[-dt_v1$idx] + E #no ground, get outside option
+    }
     #cat("Processed", j, "after", proc.time()-starttime, "seconds.\n\n")
   }
   hh_agg[, `:=`(uall=uall_cum/3000, ugrd=ugrd_cum/3000, idx=NULL)]
@@ -230,13 +262,11 @@ hhValFun<-function(i){
                       by = c("household_code", "week_end")]
   return(hh_agg)
 }
-
-hh_codes = as.integer(row.names(pref))
-clusterExport(cl, c('pref', 'xvars', 'hhValFun'))
 invisible(clusterEvalQ(cl, load('Data/Machine-Adoption/MU-Diff-Asist.RData')))
+clusterExport(cl, c('pref', 'xvars', 'hhValFun', 'eu2'))
 cval_list = parLapply(cl, hh_codes, hhValFun)
 cval_list = rbindlist(cval_list)
-save(cval_list, file = paste(output_dir, "/HH-Util-Diff.RData", sep=""))
+save(cval_list, file = paste(output_dir, "/HH-Util-Diff-Exp.RData", sep=""))
 
 load(paste(output_dir, "/HH-Util-Diff.RData", sep=""))
 load(paste(output_dir, "/HH-HW-Panel.RData", sep=""))
