@@ -13,8 +13,7 @@ rm(list = ls())               # Clear workspace
 #                613, 819, 524, 534, 533, 753, 510, 508, 514, 512, 
 #                517, 807, 751, 862, 535, 521, 548, 609, 566, 641) # Big Markets
 market_code = "all"
-sratio = 0.05
-set.seed(123456)
+sratio = 0.05 # Sampling ratio if needed.
 
 # Load Required packages
 require(data.table)
@@ -32,6 +31,10 @@ input_dir = "Data/MLogit-Data/"
 output_dir = "Data/Bayes-MCMC/"
 fig_dir = "Tabfigs/Bayes-MCMC/figs/"
 tab_dir = "Tabfigs/Bayes-MCMC/tabs/"
+
+# Set seed
+RNGkind("L'Ecuyer-CMRG")
+set.seed(12345)
 
 #---------------------------------------------------------------------------------------------------------# 
 # Initialize Parallel Execution Environment
@@ -65,6 +68,16 @@ invisible(clusterEvalQ(cl, library(bayesm)))
 invisible(clusterEvalQ(cl, library(MASS)))
 invisible(clusterEvalQ(cl, library(numDeriv)))
 invisible(clusterEvalQ(cl, library(pracma)))
+invisible(clusterEvalQ(cl, RNGkind("L'Ecuyer-CMRG")))
+
+# Set seed for each workers
+s = .Random.seed
+for (i in 1:length(cl)) {
+  s = nextRNGStream(s)
+  clusterExport(cl[i], c('s'))
+  # send s to worker i as .Random.seed
+}
+invisible(clusterEvalQ(cl, .Random.seed <- s))
 
 #---------------------------------------------------------------------------------------------------------#
 #Source the function file
@@ -144,31 +157,31 @@ nx = ncol(XMat)
 np = nk+nx # if sigma is estimated, put + 1
 nh = length(hh_full[, unique(hh)])
 nt = length(hh_full[, unique(t)])
-
-#---------------------------------------------------------------------------------------------------------#
-# Model Tuning
-# Estimate an homogeneous logit model to use it to tune RW draws
-b0 = rnorm(np)
-opt0 = optim(b0, ll_homo, gr = NULL, method = c("BFGS"), control = list(reltol=1e-16))
-hess = hessian(ll_homo, b0, h = 1e-4)
-save(opt0, hess, file = paste(input_dir, "/Homo-Hessian.RData", sep=""))
-
-# Evaluate Hessian at Fractional likelihood
 clusterExport(cl, c('xnames', 'll', 'ihessfun', 'input_dir', "nk", "nx", "np", "nh"))
 invisible(clusterEvalQ(cl, setwd("~/Keurig")))
 invisible(clusterEvalQ(cl, load(paste(input_dir, "/HH-Aux-Market.RData", sep=""))))
-invisible(clusterEvalQ(cl, load(paste(input_dir, "/Homo-Hessian.RData", sep=""))))
-hess_list = clusterEvalQ(cl, lapply(hh_list, ihessfun))
-hess_list = unlist(hess_list, recursive=F)
-save(opt0, hess, hess_list, file = paste(input_dir, "/Hessian.RData", sep=""))
-gc()
 
+#---------------------------------------------------------------------------------------------------------#
+# # Model Tuning
+# # Estimate an homogeneous logit model to use it to tune RW draws
+# b0 = rnorm(np)
+# opt0 = optim(b0, ll_homo, gr = NULL, method = c("BFGS"), control = list(reltol=1e-16))
+# hess = hessian(ll_homo, b0, h = 1e-4)
+# save(opt0, hess, file = paste(input_dir, "/Homo-Hessian.RData", sep=""))
+# 
+# # Evaluate Hessian at Fractional likelihood
+# invisible(clusterEvalQ(cl, load(paste(input_dir, "/Homo-Hessian.RData", sep=""))))
+# hess_list = clusterEvalQ(cl, lapply(hh_list, ihessfun))
+# hess_list = unlist(hess_list, recursive=F)
+# save(opt0, hess, hess_list, file = paste(input_dir, "/Hessian.RData", sep=""))
+# # save(opt0, hess, hess_list, file = paste(input_dir, "/Posterior-Variance.RData", sep=""))
+# gc()
 #---------------------------------------------------------------------------------------------------------#
 # Bayesian Estimation 
 # MCMC Settings
 burnin = 0
 thin   = 6
-draws  = 5000
+draws  = 10000
 totdraws = draws*thin + burnin
 
 ## Auxiliary prior settings, and computations
@@ -183,7 +196,8 @@ Dbar = t(rep(0,np));
 s2 = 2.93^2/np;
 
 # Distribute the functions and relevant data to the workers.
-invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hessian.RData", sep=""))))
+# invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hessian.RData", sep=""))))
+invisible(clusterEvalQ(cl, load(paste(input_dir, "/Posterior-Variance.RData", sep=""))))
 clusterExport(cl,c('i_ll', 'rwmhd', 's2'))
 
 #Initialize storage of MCMC draws
@@ -233,6 +247,8 @@ stopCluster(cl)
 # Save output to a dataset
 save(hh_code_list, bhatd, sigd, bindv, bnames, 
      file = paste(output_dir, "MDCEV-MCMC-All.RData", sep = ""))
+
+
 inx = seq(1, 5000, 2)
 bindv = bindv[inx,,]
 save(hh_code_list, bhatd, sigd, bindv, bnames, 
