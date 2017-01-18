@@ -2,7 +2,7 @@
 #
 # MCMC Summaries For the First Stage Estimation
 # Xiliang Lin
-# June, 2016
+# Jan, 2017
 # First Version: March 2016
 # 
 #####################################################################################################
@@ -16,50 +16,49 @@ setNumericRounding(0)
 
 # Set Working Folder Path Here
 setwd("~/Keurig")
+meta_dir = "Data/Meta-Data/"
 input_dir = "Data/Bayes-MCMC/"
 graph_dir = "Tabfigs/MCMC-Summaries"
-
+load(paste(meta_dir, "HH.RData", sep=""))
 #----------------------------------------------------------------------------------------------------#
 # Load Estimation Results
-#big_markets = c(501, 602, 803, 504, 539, 506, 524, 613, 623, 753) # Big Markets
-big_markets = c(501, 602, 803, 504, 539, 506, 613, 623, 753) 
-#big_markets_name = c("New York", "Chicago", "Los Angeles", "Philadelphia", "Tampa - St. Petersburg", 
-#                     "Boston", "Atlanta", "Minneapolis - St. Paul", "Dallas - Fort Worth", "Phoenix")
-big_markets_name = c("New York", "Chicago", "Los Angeles", "Philadelphia", "Tampa - St. Petersburg", 
-                     "Boston", "Minneapolis - St. Paul", "Dallas - Fort Worth", "Phoenix")
+big_markets = c(501, 506, 504, 602, 803, 511, 539, 623, 618, 505, 
+                613, 819, 524, 534, 533, 753, 510, 508, 514, 512, 
+                517, 807, 751, 862, 535, 521, 548, 609, 566, 641)
+nm = length(big_markets)
 
 brands = c("CARIBOU KEURIG", "CHOCK FULL O NUTS", "CTL BR", "DONUT HOUSE KEURIG", "DUNKIN' DONUTS",
-           "EIGHT O'CLOCK", "FOLGERS", "FOLGERS KEURIG", "GLORIA JEAN'S KEURIG", "GREEN MOUNTAIN KEURIG",
-           "MAXWELL HOUSE", "NEWMAN'S OWN ORGANICS KEURIG", "STARBUCKS", "STARBUCKS KEURIG", "TULLY'S KEURIG")
-xnames = c("0OTHER", "CARIBOU KEURIG", "CHOCK FULL O NUTS", "CTL BR", "DONUT HOUSE KEURIG", "DUNKIN' DONUTS",
-           "EIGHT O'CLOCK", "FOLGERS", "FOLGERS KEURIG", "GLORIA JEAN'S KEURIG", "GREEN MOUNTAIN KEURIG",
-           "MAXWELL HOUSE", "NEWMAN'S OWN ORGANICS KEURIG", "STARBUCKS",
-           "STARBUCKS KEURIG", "TULLY'S KEURIG", "keurig", "brand_lag_ground",
-           "brand_lag_keurig", "price_coef", "budget")
-alist = paste0("a", 2:24)
-nv = 36
+           "EIGHT O'CLOCK", "FOLGERS", "FOLGERS KEURIG", "GREEN MOUNTAIN KEURIG", "MAXWELL HOUSE", 
+           "NEWMAN'S OWN ORGANICS KEURIG", "STARBUCKS", "STARBUCKS KEURIG", "TULLY'S KEURIG")
+xnames = c("0OTHER", brands, "keurig", "flavored", "lightR", "medDR", "darkR", "assorted", "kona", 
+           "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", 'ground_alpha', 'keurig_alpha')
+alist = paste0("a", 2:15)
+np = length(xnames) - 1
 
-x_var = list(n=rep(1,9), mu=matrix(1:27,nrow=9), sig=array(rep(1,3*3*9), dim=c(3,3,9)))
-p_table = matrix(rep(0, length(big_markets)*(nv)*3), nrow=length(big_markets))
+# Storage estimates by market
+x_var = list(n=rep(1, nm), mu=matrix(1:(np*nm), nrow=nm), sig=array(rep(1,np*np*nm), dim=c(np, np, nm)))
+p_table = matrix(rep(0, 3*np*nm), nrow=length(big_markets))
 
+# Load data
+load(paste(input_dir, "/MDCEV-MCMC-All-90000.RData", sep=""))
+
+# Obtain the posterior mean by Market
 i = 0
 for (mcode in big_markets){
   i = i+1 
-  load(paste(input_dir, "/Normal-MCMC-", mcode,".RData", sep=""))
+  hh_temp = hh[dma_code==501, household_code]
+  hh_selected = sort(hh_code_list[household_code %in% hh_temp, hh])
   
-  # Thin the draws by 5
-  indx = seq(3000, 8000, 5)
-  
-  # Fill in the 0 if the brand intercept is dropped
-  ndiff = length(setdiff(alist, bnames))
-
-  # Obtain the Distribution of State Dependence
-  xind = c(34, 35, 24) - ndiff
-
-  # Store Relevant Variables 
-  x_var[["mu"]][i, ] = colMeans(bhatd[indx, xind])
-  x_var[["sig"]][,,i] = rowMeans(sigd[xind, xind, indx], dims=2)
-  x_var[["n"]][i] = length(hh_index_list)
+  # Store Relevant Variables
+  btemp = bindv[,hh_selected,]
+  x_var[["mu"]][i, ] =  colMeans(apply(btemp, c(1, 3), sum)/length(hh_selected))
+  cx = dim(btemp)
+  sigx = matrix(rep(0, cx[3]*cx[3]), nrow=cx[3])
+  for (j in 1:cx[1]){
+    sigx = sigx + crossprod(btemp[j,,])/length(hh_selected)
+  }
+  x_var[["sig"]][,,i] = sigx
+  x_var[["n"]][i] = length(hh_selected)
 }
 
 # Simulate and draw the bivariate distribution
