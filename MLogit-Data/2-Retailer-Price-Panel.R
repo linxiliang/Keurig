@@ -206,14 +206,14 @@ purchases[, brand_descr_orig := brand_descr]
 purchases[, brand_descr := ifelse(brand_descr%in%selected_brand_list, brand_descr, "OTHER")]
 purchases[, price:=(total_price_paid-coupon_value)/quantity]
 
-# Obtain the list of products and availability date in terms of brand, size, DMA and retailer
+# Obtain the list of products and availability date in terms of retailer.
 product_panel = purchases[channel_type%in%selected_channels&panel_year>=2006&
                             retailer_code%in%impute_retailers, 
                           .(first_week_end = min(week_end),
                             last_week_end = max(week_end),
                             revenue = sum(total_price_paid - coupon_value),
                             quantity = sum(quantity)),
-                          by = c("retailer_code", "dma_code", "brand_descr", "keurig", "size1_amount", 
+                          by = c("retailer_code", "brand_descr", "keurig", "size1_amount", 
                                  "ptype", "roast", "flavored", "kona", "colombian", "sumatra", "wb")]
 product_panel[, row_number := 1:.N]
 
@@ -224,40 +224,27 @@ setkey(product_panel, row_number)
 setkey(product_panel_temp, row_number)
 product_panel = product_panel[product_panel_temp]
 product_panel = product_panel[week_end>=first_week_end & week_end<=last_week_end, ]
-setkeyv(product_panel, c("retailer_code", "dma_code", "week_end", "brand_descr", "keurig", "size1_amount",
+setkeyv(product_panel, c("retailer_code", "week_end", "brand_descr", "keurig", "size1_amount",
                          "ptype", "roast", "flavored", "kona", "colombian", "sumatra", "wb"))
 
-# !!! Not needed unless the above panel was NOT established  at retailer-dma level
-# # Initialize the panel for retailer information.
-# # Obtain the unique list of store and product combination
-# retailer_temp = purchases[, .(row_number=1), by = c("dma_code", "retailer_code", "channel_type", 
-#                                  "brand_descr", "keurig", "size1_amount", "ptype", "roast", 
-#                                  "flavored", "kona", "colombian", "sumatra", "wb")]
-# retailer_temp[, row_number:=1:.N]
-# 
-# # Replicate it as many times as there are for weeks and dmas.
-# retailer_panel_1 =  as.data.table(expand.grid(row_number = 1:nrow(retailer_temp), 
-#                                               week_end = unique(purchases[, week_end])))
-# setkey(retailer_temp, row_number)
-# setkey(retailer_panel_1, row_number)
-# retailer_panel_1 = retailer_temp[retailer_panel_1]
-# retailer_panel_1[, row_number:=NULL]
+# Constrain the products if it is ever sold at the DMA
+# Obtain the unique list of store and product combination
+retailer_temp = purchases[, .(row_number=1), 
+                          by = c("dma_code", "retailer_code", "brand_descr", "keurig", 
+                                 "size1_amount", "ptype", "roast", "flavored", "kona", 
+                                 "colombian", "sumatra", "wb")]
+retailer_temp[, row_number:=NULL]
 
-# # Merge the panel with product selling span (product_panel)
-# setkeyv(retailer_panel_1, c("retailer_code", "dma_code", "brand_descr", "keurig", "size1_amount", "ptype", 
-#                             "roast", "flavored", "kona", "colombian", "sumatra", "wb", "week_end"))
-# setkeyv(product_panel, c("retailer_code", "dma_code", "brand_descr", "keurig", "size1_amount", "ptype", 
-#                          "roast", "flavored", "kona", "colombian", "sumatra", "wb", "week_end"))
-# nameorder = names(retailer_panel_1)
-# retailer_panel_1 = retailer_panel_1[product_panel[, .(retailer_code, dma_code, brand_descr, keurig, 
-#                                                       size1_amount, ptype, roast, flavored, kona, colombian, 
-#                                                       sumatra, wb, week_end)], nomatch=0L]
-# setcolorder(retailer_panel_1, nameorder)
-
-#!!! Only if the panel is at chain dma level
-retailer_panel_1 = copy(product_panel)
+# Merge with product_panel
+setkeyv(retailer_temp, c("retailer_code", "brand_descr", "keurig", "size1_amount", "ptype", 
+                         "roast", "flavored", "kona", "colombian", "sumatra", "wb"))
+setkeyv(product_panel, c("retailer_code", "brand_descr", "keurig", "size1_amount", "ptype", 
+                         "roast", "flavored", "kona", "colombian", "sumatra", "wb"))
+retailer_panel_1 = retailer_temp[product_panel, nomatch=0L, allow.cartesian=TRUE]
 setkeyv(retailer_panel_1, c("dma_code", "retailer_code", "week_end", "brand_descr", "keurig", "size1_amount",
                             "flavored", "kona", "colombian", "sumatra", "wb"))
+
+# Generate month variable
 retailer_panel_1[, month:=substr(as.character(week_end), 1, 7)]
 
 # Check whether every retailers is operating for every week
@@ -309,7 +296,6 @@ retailer_panel_1[, `:=`(price = price_avg, mprice = price_mid)]
 retailer_panel_1[is.na(price), `:=`(price = region_price_avg, mprice = region_price_mid)]
 retailer_panel_1[is.na(price), `:=`(price = natl_price_avg, mprice = natl_price_mid)]
 
-# Now about 64% of the observations have been filled for the retailers we are interested in top DMAs
 # Now, fill the remaining observations using time regressions within store
 # size and week are the most scant information: A flexible time trend may help with this.
 # The next is week and brand...
@@ -472,8 +458,8 @@ retailer_panel_1[, `:=`(p_temp1=NULL, p_temp2=NULL, p_temp3=NULL, p_temp4=NULL, 
                         p_imputed_6=NULL, p_imputed_7=NULL, p_imputed_8=NULL, p_imputed_9=NULL, p_imputed_10=NULL, 
                         p_imputed_11=NULL)]
 gc()
-#save(retailer_panel_1, file = paste(output_dir, "/HMS_Imputed_Prices.RData", sep=""))
-save(retailer_panel_1, file = paste(output_dir, "/HMS_Imputed_Prices_Region.RData", sep=""))
+save(retailer_panel_1, file = paste(output_dir, "/HMS_Imputed_Prices.RData", sep=""))
+#save(retailer_panel_1, file = paste(output_dir, "/HMS_Imputed_Prices_Region.RData", sep=""))
 
 #---------------------------------------------------------------------------------------------------#
 # Load RMS Movement and aggregate to get average price

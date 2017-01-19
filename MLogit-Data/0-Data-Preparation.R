@@ -35,7 +35,7 @@ focal_module = 1463 # Focus on ground and whole bean coffee
 
 # Purchases threshold
 npurch = 5 # The purchase threshold for households to be selected.
-rms_purch_criteria = 3 # Number of purchases needed to put in RMS to be included ... will be fixed later.
+rms_purch_criteria = 3 # Number of purchases needed to put in RMS to be included
 
 # DMA Rank Threshold
 dma_rank_threshold = 30 # Only DMAs with top N coffee consumption households
