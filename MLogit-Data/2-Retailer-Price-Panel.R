@@ -516,8 +516,8 @@ setkeyv(retailer_panel, c("dma_code", "retailer_code", "week_end", "brand_descr"
                           "ptype", "roast", "flavored", "kona", "colombian", "sumatra", "wb"))
 
 # Save data for retailer_panel 
-#save(retailer_panel, file = paste(output_dir, "/Retailer_Price_Panel.RData", sep=""))
-save(retailer_panel, file = paste(output_dir, "/Retailer_Price_Panel_Region.RData", sep=""))
+save(retailer_panel, file = paste(output_dir, "/Retailer_Price_Panel.RData", sep=""))
+# save(retailer_panel, file = paste(output_dir, "/Retailer_Price_Panel_Region.RData", sep=""))
 
 # Save the list of auxiliary data sets and use them in further processing of data
 save(purchases, hh, hh_list, retailers, retailer_type_sales, selected_brand_list,
