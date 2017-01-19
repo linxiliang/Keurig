@@ -248,7 +248,7 @@ hhValFun<-function(i){
                                 .(ubar=eu2(min(UE-0.00001), max(U0+0.00001), 
                                            alpha, zb, price, eps, E)), by = .(idx)]
       ugrd_cum[dt_v1$idx] = ugrd_cum[dt_v1$idx] + dt_v1$ubar
-      ugrd_cum[-dt_v1$idx] = ugrd_cum[-dt_v1$idx] + E #no ground, get outside option
+      ugrd_cum[-dt_v1$idx] = ugrd_cum[-dt_v1$idx] + 0 #no ground, get no value
     }
     #cat("Processed", j, "after", proc.time()-starttime, "seconds.\n\n")
   }

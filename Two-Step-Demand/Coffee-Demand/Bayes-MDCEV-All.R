@@ -162,20 +162,20 @@ invisible(clusterEvalQ(cl, setwd("~/Keurig")))
 invisible(clusterEvalQ(cl, load(paste(input_dir, "/HH-Aux-Market.RData", sep=""))))
 
 #---------------------------------------------------------------------------------------------------------#
-# # Model Tuning
-# # Estimate an homogeneous logit model to use it to tune RW draws
-# b0 = rnorm(np)
-# opt0 = optim(b0, ll_homo, gr = NULL, method = c("BFGS"), control = list(reltol=1e-16))
-# hess = hessian(ll_homo, b0, h = 1e-4)
-# save(opt0, hess, file = paste(input_dir, "/Homo-Hessian.RData", sep=""))
-# 
-# # Evaluate Hessian at Fractional likelihood
-# invisible(clusterEvalQ(cl, load(paste(input_dir, "/Homo-Hessian.RData", sep=""))))
-# hess_list = clusterEvalQ(cl, lapply(hh_list, ihessfun))
-# hess_list = unlist(hess_list, recursive=F)
-# save(opt0, hess, hess_list, file = paste(input_dir, "/Hessian.RData", sep=""))
-# # save(opt0, hess, hess_list, file = paste(input_dir, "/Posterior-Variance.RData", sep=""))
-# gc()
+# Model Tuning
+# Estimate an homogeneous logit model to use it to tune RW draws
+b0 = rnorm(np)
+opt0 = optim(b0, ll_homo, gr = NULL, method = c("BFGS"), control = list(reltol=1e-16))
+hess = hessian(ll_homo, b0, h = 1e-4)
+save(opt0, hess, file = paste(input_dir, "/Homo-Hessian.RData", sep=""))
+
+# Evaluate Hessian at Fractional likelihood
+invisible(clusterEvalQ(cl, load(paste(input_dir, "/Homo-Hessian.RData", sep=""))))
+hess_list = clusterEvalQ(cl, lapply(hh_list, ihessfun))
+hess_list = unlist(hess_list, recursive=F)
+save(opt0, hess, hess_list, file = paste(input_dir, "/Hessian.RData", sep=""))
+# save(opt0, hess, hess_list, file = paste(input_dir, "/Posterior-Variance.RData", sep=""))
+gc()
 #---------------------------------------------------------------------------------------------------------#
 # Bayesian Estimation 
 # MCMC Settings
@@ -196,8 +196,8 @@ Dbar = t(rep(0,np));
 s2 = 2.93^2/np;
 
 # Distribute the functions and relevant data to the workers.
-# invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hessian.RData", sep=""))))
-invisible(clusterEvalQ(cl, load(paste(input_dir, "/Posterior-Variance.RData", sep=""))))
+invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hessian.RData", sep=""))))
+# invisible(clusterEvalQ(cl, load(paste(input_dir, "/Posterior-Variance.RData", sep=""))))
 clusterExport(cl,c('i_ll', 'rwmhd', 's2'))
 
 #Initialize storage of MCMC draws
@@ -242,16 +242,9 @@ for (d in 1:totdraws){
       proc.time()[3] - start_time, "\n\n")
 }
 
-stopCluster(cl)
-
 # Save output to a dataset
-save(hh_code_list, bhatd, sigd, bindv, bnames, 
-     file = paste(output_dir, "MDCEV-MCMC-All.RData", sep = ""))
-
-
-inx = seq(1, 5000, 2)
+inx = seq(1, 10000, 4)
 bindv = bindv[inx,,]
 save(hh_code_list, bhatd, sigd, bindv, bnames, 
-     file = paste(output_dir, "MDCEV-MCMC-All-90000.RData", sep = ""))
-
-
+     file = paste(output_dir, "MDCEV-MCMC-All-60000.RData", sep = ""))
+stopCluster(cl)
