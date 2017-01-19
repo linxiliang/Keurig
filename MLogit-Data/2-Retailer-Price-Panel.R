@@ -213,7 +213,7 @@ product_panel = purchases[channel_type%in%selected_channels&panel_year>=2006&
                             last_week_end = max(week_end),
                             revenue = sum(total_price_paid - coupon_value),
                             quantity = sum(quantity)),
-                          by = c("retailer_code", "brand_descr", "keurig", "size1_amount", 
+                          by = c("retailer_code", 'channel_type', "brand_descr", "keurig", "size1_amount", 
                                  "ptype", "roast", "flavored", "kona", "colombian", "sumatra", "wb")]
 product_panel[, row_number := 1:.N]
 
@@ -253,7 +253,7 @@ unique(retailer_panel_1[, .(dma_code, retailer_code, week_end)])[, .N, by = c("d
 # Given the initialized panel, the task is then to fill the panel with imputed prices.
 # The most accurate price is the price from the retailer at the dma - so obtain that first
 retailer_temp = purchases[, .(price_avg = sum(total_price_paid-coupon_value)/sum(quantity),
-                            price_mid = median(price)),
+                              price_mid = median(price)),
                           by = c("dma_code", "retailer_code", "week_end", "brand_descr", "keurig", "size1_amount",
                                  "flavored", "kona", "colombian", "sumatra", "wb")]
 retailer_temp[, cor(price_avg, price_mid)] # correlation is about >0.98, probably doesn't matter which price I use.
@@ -282,7 +282,7 @@ retailer_panel_1 = retailer_region_prices[retailer_panel_1]
 
 # Now, same chain -- national price 
 retailer_temp = purchases[, .(natl_price_avg = sum(total_price_paid - coupon_value)/sum(quantity), 
-                            natl_price_mid = median(price)),
+                              natl_price_mid = median(price)),
                           by = c("retailer_code", "week_end", "brand_descr", "keurig", "size1_amount",
                                  "flavored", "kona", "colombian", "sumatra", "wb")]
 setkeyv(retailer_temp, c("retailer_code", "week_end", "brand_descr", "keurig", "size1_amount",
@@ -319,7 +319,7 @@ retailer_panel_1 = retailer_panel_1[dma_code %in% top_dma_list, ]
 
 # Filter DMA and chains so we don't mis-present a a chain when it's not available. 
 setkey(retailer_panel_1, dma_code, retailer_code)
-retailer_panel_1[np_dma_retailer, nomatch=0L][np>=np_threshold, ]
+retailer_panel_1 = retailer_panel_1[np_dma_retailer, nomatch=0L][np>=np_threshold, ]
 
 # Impute the prices retailer by retailer
 retailer_R2 = as.data.table(expand.grid(retailer_code = impute_retailers, 
@@ -456,7 +456,7 @@ retailer_panel_1[, `:=`(p_temp1=NULL, p_temp2=NULL, p_temp3=NULL, p_temp4=NULL, 
                         p_temp7=NULL, p_temp8=NULL, p_temp9=NULL, p_temp10=NULL,p_temp11=NULL, p_temp12=NULL, 
                         p_imputed_1=NULL, p_imputed_2=NULL, p_imputed_3=NULL, p_imputed_4=NULL, p_imputed_5=NULL, 
                         p_imputed_6=NULL, p_imputed_7=NULL, p_imputed_8=NULL, p_imputed_9=NULL, p_imputed_10=NULL, 
-                        p_imputed_11=NULL)]
+                        p_imputed_11=NULL, row_number=NULL, np=NULL)]
 gc()
 save(retailer_panel_1, file = paste(output_dir, "/HMS_Imputed_Prices.RData", sep=""))
 #save(retailer_panel_1, file = paste(output_dir, "/HMS_Imputed_Prices_Region.RData", sep=""))
@@ -499,8 +499,8 @@ gc()
 move = move[retailer_code %in% rms_retailer_list[, retailer_code], ]
 move[, `:=`(price=rms_price, rms_price=NULL, rms_units=NULL, rms_revenue=NULL)]
 retailer_panel_1[, `:=`(natl_price_avg=NULL, natl_price_mid=NULL, region_price_avg=NULL, region_price_mid=NULL,
-                        price_avg=NULL, price_mid=NULL, channel_type=NULL, month=NULL, mprice=NULL, revenue=NULL, 
-                        first_week_end=NULL, last_week_end=NULL, row_number=NULL, quantity=NULL)]
+                        price_avg=NULL, price_mid=NULL, month=NULL, mprice=NULL, revenue=NULL, 
+                        first_week_end=NULL, last_week_end=NULL, quantity=NULL)]
 setcolorder(retailer_panel_1, names(move))
 move[, in_rms:=1]
 retailer_panel_1[, in_rms:=0]
@@ -524,4 +524,3 @@ save(purchases, hh, hh_list, retailers, retailer_type_sales, selected_brand_list
      top_dma_list, top_keurig_brands,
      file = paste(output_dir, "/Assist_Data_Sets_Retailer_Prices.RData", sep=""))
 gc()
-

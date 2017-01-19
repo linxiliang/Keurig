@@ -8,8 +8,8 @@ load(paste(HMS_trip_dir, "/Trips.RData", sep=""))
 load(paste(output_dir, "/Assist_Data_Sets_Retailer_Prices.RData", sep=""))
 
 # Load Imputed Price and Availability Data - this is based on both RMS and Homescan
-load(paste(output_dir, "/Retailer_Price_Panel_Region.RData", sep=""))
-#load(paste(output_dir, "/Retailer_Price_Panel.RData", sep=""))
+load(paste(output_dir, "/Retailer_Price_Panel.RData", sep=""))
+#load(paste(output_dir, "/Retailer_Price_Panel_Region.RData", sep=""))
 
 # Only trips by chosen household
 trips = trips[household_code %in% hh_list[, household_code]]
