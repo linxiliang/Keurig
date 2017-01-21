@@ -4,8 +4,8 @@
 load(paste(output_dir, "/Assist_Data_Sets_Retailer_Prices.RData", sep=""))
 
 # Load Imputed Price and Availability Data - this is based on both RMS and Homescan
-load(paste(output_dir, "/Retailer_Price_Panel_Region.RData", sep=""))
-#load(paste(output_dir, "/Retailer_Price_Panel.RData", sep=""))
+load(paste(output_dir, "/Retailer_Price_Panel.RData", sep=""))
+#load(paste(output_dir, "/Retailer_Price_Panel_Region.RData", sep=""))
 
 # Load household and demographic data
 load(paste(meta_dir, "/HH-Holder-Flags.RData", sep=""))
@@ -81,12 +81,10 @@ hh_market_prod[is.na(total_price_paid), `:=`(total_price_paid=0, size=0, coupon_
 # Remove purchases of VUE, TASSIMO, SENSEO or GUSTO -- They are also single cup serving machine
 hh_market_prod = hh_market_prod[ptype%in%c("KEURIG","OTHER"), ]
 
+
 # Still, for some shopping occasions, the consumer could be choosing from over 90 alternatives, 
-# which is not realistic. So, I make some assumptions about consumer's consideration set. 
-# I define the product to be in the consideration set if the brand size combinations is in the 
-# top 70% in the market (dma+keurig) Or the brand size combintation is in the top 90% of the 
-# consumer's consumption set.
-# Then, product is retained if it meets either of the above criteria or chosen at the choice occasion. 
+# which is not realistic
+# So, I drop all brands below 90th percentile in ground coffee
 brand_size_type_sales = purchases[, .(revenue = sum(total_price_paid-coupon_value)), 
                                   by = c("dma_code", "ptype", "keurig", "brand_descr", "roast", 
                                          "flavored", "kona", "colombian", "sumatra", "wb")]
@@ -95,18 +93,6 @@ brand_size_type_sales = brand_size_type_sales[order(-rshare), ]
 setkeyv(brand_size_type_sales, c("dma_code", "ptype", "keurig"))
 brand_size_type_sales[, rcumshare:=cumsum(rshare), by=c("dma_code", "ptype", "keurig")]
 brand_size_type_sales[, rcumshare:=rcumshare-rshare]
-brand_size_type_sales=brand_size_type_sales[rcumshare<=0.70, .(dma_code, ptype, keurig, brand_descr, roast,
-                                                              flavored, kona, colombian, sumatra, wb, rshare)]
-hh_brand_size_sales = purchases[, .(revenue = sum(total_price_paid-coupon_value)), 
-                                by = c("household_code", "ptype", "keurig", "brand_descr", "roast", 
-                                       "flavored", "kona", "colombian", "sumatra", "wb")]
-hh_brand_size_sales[, rshare:=revenue/sum(revenue), by=c("household_code", "keurig")]
-hh_brand_size_sales = hh_brand_size_sales[order(-rshare), ]
-setkeyv(hh_brand_size_sales, c("household_code", "ptype", "keurig"))
-hh_brand_size_sales[, rcumshare:=cumsum(rshare), by=c("household_code", "ptype", "keurig")]
-hh_brand_size_sales[, rcumshare:=rcumshare-rshare]
-hh_brand_size_sales=hh_brand_size_sales[rcumshare<=0.90, .(household_code, ptype, keurig, brand_descr, roast, 
-                                                           flavored, kona, colombian, sumatra, wb, rshare)]
 
 # Merge the criteria into the hh_market_prod
 onames = names(hh_market_prod)
@@ -115,17 +101,16 @@ setkeyv(brand_size_type_sales, c("dma_code", "ptype", "keurig", "brand_descr", "
 setkeyv(hh_market_prod, c("dma_code", "ptype", "keurig", "brand_descr", "roast", 
                           "flavored", "kona", "colombian", "sumatra", "wb"))
 hh_market_prod = brand_size_type_sales[hh_market_prod]
-setkeyv(hh_brand_size_sales, c("household_code", "ptype", "keurig", "brand_descr",  
-                               "roast", "flavored", "kona", "colombian", "sumatra", "wb"))
-setkeyv(hh_market_prod, c("household_code", "ptype", "keurig", "brand_descr", 
-                          "roast", "flavored", "kona", "colombian", "sumatra", "wb"))
-hh_market_prod = hh_brand_size_sales[hh_market_prod]
-hh_market_prod = hh_market_prod[!is.na(rshare)|!is.na(i.rshare)|size>0, ]
-hh_market_prod[,`:=`(rshare=NULL, i.rshare=NULL)]
+hh_market_prod = hh_market_prod[rcumshare<=0.85|keurig==1, ]
+hh_market_prod[,`:=`(rshare=NULL)]
 setcolorder(hh_market_prod, onames)
 gc()
 
-# Only keep the occassions with purchases - CondiGUSTOtional on purchasing coffee
+# Get rid of extreme prices -- below 0.05% percentile and 99.95% percentile 
+plimit = hh_market_prod[, quantile(price, c(0.0005, 0.9995))]
+hh_market_prod = hh_market_prod[price>=plimit[1] & price<=plimit[2], ]
+
+# Only keep the occassions with purchases conditonal on purchasing coffee
 hh_market_prod[, npurch:=sum(total_price_paid>0.009), by = "trip_code_uc"]
 hh_market_prod = hh_market_prod[as.integer(npurch)>=1, ]
 

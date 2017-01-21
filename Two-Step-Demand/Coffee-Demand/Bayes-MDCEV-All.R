@@ -38,21 +38,31 @@ set.seed(12345)
 
 #---------------------------------------------------------------------------------------------------------# 
 # Initialize Parallel Execution Environment
-primary <- 'bushgcn01'
+# primary <- 'bushgcn01'
+# machineAddresses <- list(
+#   list(host=primary, user='xlin0',
+#        ncore=20),
+#   list(host='bushgcn02',user='xlin0',
+#        ncore=20),
+#   list(host='bushgcn03',user='xlin0',
+#        ncore=20),
+#   list(host='bushgcn04',user='xlin0',
+#        ncore=20),
+#   list(host='bushgcn05',user='xlin0',
+#        ncore=20),
+#   list(host='bushgcn06',user='xlin0',
+#        ncore=20)
+#   )
+primary <- 'bushgcn10'
 machineAddresses <- list(
   list(host=primary, user='xlin0',
-       ncore=20),
-  list(host='bushgcn02',user='xlin0',
-       ncore=20),
-  list(host='bushgcn03',user='xlin0',
-       ncore=20),
-  list(host='bushgcn04',user='xlin0',
-       ncore=20),
-  list(host='bushgcn05',user='xlin0',
-       ncore=20),
-  list(host='bushgcn06',user='xlin0',
-       ncore=20)
+       ncore=40),
+  list(host='bushgcn11',user='xlin0',
+       ncore=40),
+  list(host='bushgcn12',user='xlin0',
+       ncore=40)
   )
+
 spec <- lapply(machineAddresses,
                function(machine) {
                  rep(list(list(host=machine$host,
@@ -95,7 +105,7 @@ source(paste(code_dir, 'mdc-functions.R', sep=""))
 #---------------------------------------------------------------------------------------------------------#
 # Data Preparation
 # Load estimation data
-load(paste(input_dir,"MDC-Cond-Purchase-Flavors.RData",sep=""))
+load(paste(input_dir,"MDC-RT-Purchase-Flavors.RData",sep=""))
 
 if (market_code != "all"){
   if (market_code == "remaining"){

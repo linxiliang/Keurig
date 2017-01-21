@@ -12,6 +12,8 @@ rm(list = ls())
 
 # Packages
 library(data.table)
+library(ggplot2)
+library(gridExtra)
 setNumericRounding(0)
 
 # Set Working Folder Path Here
@@ -91,7 +93,11 @@ for (b in brands){
 write.csv(p_table, file = paste(graph_dir, "/tabs/mean_post_prefer.csv", sep=""))
 
 # Plot the MCMC Draws by Brands and Flavors
-
+klag_ind = which(xnames=="brand_lag_keurig")-1
+glag_ind = which(xnames=="brand_lag")-1
+lag_dt = data.table(klag = bhatd[, klag_ind], glag = bhatd[, glag_ind])
+qplot(klag, glag, data=lag_dt, xlab = "Keurig Adjustment", ylab = "Ground Coffee State Dependence")
+scatter.smooth(bhatd[, c(klag_ind, glag_ind)], ylim = c(-0.8,-0.4), cex=0.2)
 
 # Storage estimates by market
 x_var = list(n=rep(1, nm), mu=matrix(1:(np*nm), nrow=nm), sig=array(rep(1,np*np*nm), dim=c(np, np, nm)))
