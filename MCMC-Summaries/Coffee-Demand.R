@@ -13,6 +13,8 @@ rm(list = ls())
 # Packages
 library(data.table)
 library(ggplot2)
+library(ggmcmc)
+library(grid)
 library(gridExtra)
 setNumericRounding(0)
 
@@ -137,116 +139,91 @@ pdf(file=paste(graph_dir, "/figs/StateDependenceScatter.pdf", sep=""), width=8, 
 qplot(bhatd[, klag_ind], bhatd[, glag_ind], xlab = "KCup Adjustment", 
       ylab = "Ground Coffee State Dependence") + theme_bw()
 dev.off()
+
 #----------------------------------------------------------------------------------------------------#
-# Plot the MCMC Draws by Brands and Flavors
+# Plot the posterior densities and credible intervals of Satiation Parameters
+ksa_ind = which(xnames=="keurig_alpha")-1
+gsa_ind = which(xnames=="ground_alpha")-1
 
+# Create x grid (two grid need to have the same size)
+xgrid = seq(0, 1, 0.002)
+kgrid = xgrid*(0.99999-0.7)+0.7
+ggrid = xgrid*(0.99999-0.9)+0.9
+gsize = length(ggrid)
+if (gsize!=length(kgrid)) stop("KCup and Ground Coffee Grid size is not the same")
+draws = dim(bhatd)[1]
 
+# Initialize dataset to store percentiles
+kd_mat = matrix(rep(0, gsize*draws), nrow=draws)
+gd_mat = matrix(rep(0, gsize*draws), nrow=draws)
+for (d in 1:draws){
+  kd_mat[d, ] = dnorm(log(kgrid/(1-kgrid)), mean = bhatd[d, ksa_ind], sd = sqrt(sigd[ksa_ind, ksa_ind, d]))
+  gd_mat[d, ] = dnorm(log(ggrid/(1-ggrid)), mean = bhatd[d, gsa_ind], sd = sqrt(sigd[gsa_ind, gsa_ind, d]))
+  kd_mat[d, ] = kd_mat[d, ] * 1/(kgrid*(1-kgrid))
+  gd_mat[d, ] = gd_mat[d, ] * 1/(ggrid*(1-ggrid))
+}
 
-# Storage estimates by market
-x_var = list(n=rep(1, nm), mu=matrix(1:(np*nm), nrow=nm), sig=array(rep(1,np*np*nm), dim=c(np, np, nm)))
-p_table = matrix(rep(0, 3*np*nm), nrow=length(big_markets))
+# Obtain the percentiles in grid 
+kd_pct = matrix(rep(0, gsize*3), nrow=gsize)
+gd_pct = matrix(rep(0, gsize*3), nrow=gsize)
+for (g in 1:gsize){
+  kd_pct[g, ] = quantile(kd_mat[,g], c(0.025, 0.50, 0.975))
+  gd_pct[g, ] = quantile(gd_mat[,g], c(0.025, 0.50, 0.975))
+}
+rm(kd_mat, gd_mat)
+gc()
 
+# Create the dataset for graphs
+dat0 = data.table(grid_points=kgrid, den0=kd_pct[,1], den1=kd_pct[,2], den2=kd_pct[,3], Parameter = "KCup")
+dat1 = data.table(grid_points=ggrid, den0=gd_pct[,1], den1=gd_pct[,2], den2=gd_pct[,3], Parameter = "Ground")
+dat = rbindlist(list(dat0, dat1))
+pdf(file=paste(graph_dir, "/figs/SatiationDensity.pdf", sep=""), width=8, height=5)
+ggplot(dat, aes(x=grid_points, y=den1, group=Parameter, colour=Parameter))+geom_line()+
+  geom_ribbon(data=dat,aes(ymin=den0,ymax=den2, fill=Parameter), alpha=0.3)+theme_bw()+
+  xlab("Parameter Value") + ylab("Density")+theme(legend.position=c(0.1,0.9))+
+  scale_y_continuous(breaks=seq(0, 50, 5))+scale_x_continuous(breaks=seq(0.7, 1, 0.05))
+dev.off()
 
-# Create posterior 95% coverage region of different brands
-p_table = data.table(market = big_markets_name, dma_code = big_markets, p_table)
+pdf(file=paste(graph_dir, "/figs/SatiationScatter.pdf", sep=""), width=8, height=5)
+qplot(exp(bhatd[, ksa_ind])/(1+exp(bhatd[, ksa_ind])), 
+      exp(bhatd[, gsa_ind])/(1+exp(bhatd[, gsa_ind])), xlab = "KCup", 
+      ylab = "Ground Coffee State Dependence") + theme_bw()
+dev.off()
 
-# Summarize 
-# Obtain the posterior mean by Market
+#----------------------------------------------------------------------------------------------------#
+# Plot MCMC Draws to show stability
+xlabels=c("BRAND: CARIBOU KEURIG", "BRAND: CHOCK FULL O NUTS", "BRAND: PRIVATE LABEL", "BRAND: DONUT HOUSE KEURIG", 
+          "BRAND: DUNKIN' DONUTS", "BRAND: EIGHT O'CLOCK", "BRAND: FOLGERS", "BRAND: FOLGERS KEURIG",
+          "BRAND: GREEN MOUNTAIN KEURIG", "BRAND: MAXWELL HOUSE", "BRAND: MILLSTONE", 
+          "BRAND: NEWMAN'S OWN ORGANICS KEURIG", "BRAND: STARBUCKS", "BRAND: STARBUCKS KEURIG", 
+          "KEURIG", "FLAVORED COFFEE", "LIGHT ROAST", "MEDIUM DARK ROAST", "DARK ROAST",
+          "ASSORTED FLAVORS", "KONA COFFEE", "COLOMBIAN COFFEE", "SUMATRA COFFEE", "WHOLEBEAN COFFEE", 
+          "STATE DEPENDENCE: KCUP ADJUSTMENT", "STATE DEPENDENCE", 
+          "TRANSFORMED ALPHA: GROUND", "TRANSFORMED ALPHA: KCUP")
+
+nc = 2
+nr = 4
+ngraph = nc*nr
 i = 0
-for (mcode in big_markets){
-  i = i+1 
-  hh_temp = hh[dma_code==mcode, household_code]
-  hh_selected = sort(hh_code_list[household_code %in% hh_temp, hh])
-  
-  # Store Relevant Variables
-  btemp = bindv[,hh_selected,]
-  x_var[["mu"]][i, ] =  colMeans(apply(btemp, c(1, 3), sum)/length(hh_selected))
-  cx = dim(btemp)
-  sigx = matrix(rep(0, cx[3]*cx[3]), nrow=cx[3])
-  for (j in 1:cx[1]){
-    sigx = sigx + crossprod(btemp[j,,])/length(hh_selected)
-  }
-  x_var[["sig"]][,,i] = sigx/cx[1]
-  x_var[["n"]][i] = length(hh_selected)
-}
-
-# Simulate and draw the bivariate distribution
-# Construct draws
-xgrid = seq(-6, 6, 0.001)
-x_var[["n"]] = (x_var[["n"]])/sum(x_var[["n"]])
-dtab1 = matrix(rep(0, 9*length(xgrid)), ncol=9)
-dtab2 = matrix(rep(0, 9*length(xgrid)), ncol=9)
-for (i in 1:9){
-  print(i)
-  dtab1[,i] = dnorm(xgrid, mean = x_var[["mu"]][i, 1], sd = sqrt(x_var[["sig"]][1,1,i]))
-  dtab2[,i] = dnorm(xgrid, mean = x_var[["mu"]][i, 2], sd = sqrt(x_var[["sig"]][2,2,i]))
-}
-yden1 = dtab1%*%x_var[["n"]]
-yden2 = dtab2%*%x_var[["n"]]
-
-pdf(file=paste(graph_dir, "/figs/StateDependence.pdf", sep=""), width=8, height=5)
-plot(xgrid, yden2, type = "l", ylab = "Density",
-     xlab = "State Dependence", lty = 2, col = "red")
-lines(xgrid, yden1)
-legend("topright", c("Gound Coffee", "K-Cup Adjustment"),
-       lty=c(2,1), col=c("red","black"))
-dev.off()
-
-xgrid = seq(-4, 12, 0.001)
-dtab = matrix(rep(0, 9*length(xgrid)), ncol=9)
-for (i in 1:9){
-  dtab[,i] = dnorm(xgrid, mean = x_var[["mu"]][i, 3], sd = sqrt(x_var[["sig"]][3,3,i]))
-}
-yden = dtab%*%x_var[["n"]]
-
-pdf(file=paste(graph_dir, "/figs/KeurigP.pdf", sep=""), width=8, height=5)
-plot(xgrid, yden, type = "l", ylab = "Density", xlim=c(-4, 12),
-     xlab = "K-Cup Preference", lty = 1, col = "black")
-dev.off()
-
-
-scatter(drawd[,1], drawd[,2])
-smoothScatter(drawd[,1], drawd[,2], bandwidth=0.1)
-
-p_table = data.table(market = big_markets_name, dma_code = big_markets, p_table)
-write.csv(p_table, file = paste(graph_dir, "/tabs/mean_post_prefer.csv", sep=""), row.names = F)
-
-if (ndiff!=0){
-  m_list = setdiff(alist, bnames)
-  for (k in 1:length(m_list)) {
-    numk = as.integer(substr(m_list[k], 2, nchar(m_list[k])))-2
-    bhatd = cbind(bhatd[, 1:numk], rep(0,nrow(bhatd)), 
-                  bhatd[, (numk+1):ncol(bhatd)])
+k = 0
+gph = as.list(NULL)
+for (xl in xlabels){
+  i = i+1
+  xind = which(xlabels==xl)
+  dat = data.table(bhatd[, xind])
+  dat[, Draws := 1:.N]
+  y_low  = min(bhatd[, xind])-0.5
+  y_high = max(bhatd[, xind])+0.5
+  j = ifelse(i%%ngraph==0, ngraph, i%%ngraph)
+  gph[[j]] = ggplot(dat, aes(x=Draws, y=V1))+geom_line(color="skyblue", size=0.2)+theme_bw()+ 
+    ylim(y_low, y_high)+theme(axis.title=element_text(size=8))+ylab(xl)
+  if (i%%ngraph==0 | i==length(xlabels)){
+    k = k+1
+    multplot = marrangeGrob(gph, ncol=nc, nrow=nr, top="")
+    ggsave(paste(graph_dir, "/figs/TracePlot", k, ".pdf", sep=""), multplot, width=7, height=9)
+    gph = as.list(NULL)
   }
 }
 
 
-mu_state = colMeans(bhatd[indx, 34:35])
-sig_state = rowMeans(sigd[34:35, 34:35, indx], dims=2)
-xgrid = seq(-6, 6, 0.01)
-g_den = dnorm(xgrid, mu_state[1], sd = sqrt(sig_state[1,1]))
-k_den = dnorm(xgrid, mu_state[2], sd = sqrt(sig_state[2,2]))
-pdf(file=paste(graph_dir, "/figs/DMA-", mcode, "-StateDepend-By-Type.pdf", sep=""), width=8, height=5)
-plot(xgrid, k_den, type = "l", ylab = "Density",
-     xlab = "State Dependence", lty = 2, col = "red")
-lines(xgrid, g_den)
-legend("topright", c("K-Cups", "Gound Coffee"),
-       lty=c(2,1), col=c("red","black"))
-dev.off()
-
-j = 0 
-for (xn in xnames){
-  if (j!=0){
-    if (grepl("KEURIG", xn)){
-      p_table[i,j] = median(bhatd[indx, j] + bhatd[indx, 24])
-      p_table[i,(j+nv)] = quantile(bhatd[indx, j] + bhatd[indx, 24], 0.05) 
-      p_table[i,(j+2*nv)] = quantile(bhatd[indx, j] + bhatd[indx, 24], 0.95) 
-    } else{
-      p_table[i,j] = median(bhatd[indx, j])
-      p_table[i,(j+nv)] = quantile(bhatd[indx, j], 0.05) 
-      p_table[i,(j+2*nv)] = quantile(bhatd[indx, j], 0.95) 
-    }
-  }
-  j = j+1
-}
 
