@@ -92,12 +92,55 @@ for (b in brands){
 }
 write.csv(p_table, file = paste(graph_dir, "/tabs/mean_post_prefer.csv", sep=""))
 
-# Plot the MCMC Draws by Brands and Flavors
+#----------------------------------------------------------------------------------------------------#
+# Plot the posterior densities and credible intervals of lags
 klag_ind = which(xnames=="brand_lag_keurig")-1
 glag_ind = which(xnames=="brand_lag")-1
-lag_dt = data.table(klag = bhatd[, klag_ind], glag = bhatd[, glag_ind])
-qplot(klag, glag, data=lag_dt, xlab = "Keurig Adjustment", ylab = "Ground Coffee State Dependence")
-scatter.smooth(bhatd[, c(klag_ind, glag_ind)], ylim = c(-0.8,-0.4), cex=0.2)
+
+# Create x grid (two grid need to have the same size)
+kgrid = seq(-4, 3, 0.01)
+ggrid = seq(-2, 5, 0.01)
+gsize = length(ggrid)
+if (gsize!=length(kgrid)) stop("Keurig Adjustment and Ground Coffee Grid size is not the same")
+draws = dim(bhatd)[1]
+
+# Initialize dataset to store percentiles
+kd_mat = matrix(rep(0, gsize*draws), nrow=draws)
+gd_mat = matrix(rep(0, gsize*draws), nrow=draws)
+for (d in 1:draws){
+  kd_mat[d, ] = dnorm(kgrid, mean = bhatd[d, klag_ind], sd = sqrt(sigd[klag_ind, klag_ind, d]))
+  gd_mat[d, ] = dnorm(ggrid, mean = bhatd[d, glag_ind], sd = sqrt(sigd[glag_ind, glag_ind, d]))
+}
+
+# Obtain the percentiles in grid 
+kd_pct = matrix(rep(0, gsize*3), nrow=gsize)
+gd_pct = matrix(rep(0, gsize*3), nrow=gsize)
+for (g in 1:gsize){
+  kd_pct[g, ] = quantile(kd_mat[,g], c(0.025, 0.50, 0.975))
+  gd_pct[g, ] = quantile(gd_mat[,g], c(0.025, 0.50, 0.975))
+}
+rm(kd_mat, gd_mat)
+gc()
+
+# Create the dataset for graphs
+dat0 = data.table(grid_points=kgrid, den0=kd_pct[,1], den1=kd_pct[,2], den2=kd_pct[,3], Parameter = "KCup Adjustment")
+dat1 = data.table(grid_points=ggrid, den0=gd_pct[,1], den1=gd_pct[,2], den2=gd_pct[,3], Parameter = "Ground")
+dat = rbindlist(list(dat0, dat1))
+pdf(file=paste(graph_dir, "/figs/StateDependenceDensity.pdf", sep=""), width=8, height=5)
+ggplot(dat, aes(x=grid_points, y=den1, group=Parameter, colour=Parameter))+geom_line()+
+  geom_ribbon(data=dat,aes(ymin=den0,ymax=den2, fill=Parameter), alpha=0.3)+theme_bw()+
+  xlab("Parameter Value") + ylab("Density")+theme(legend.position=c(0.88,0.9))+
+  scale_y_continuous(breaks=seq(0, 0.40, 0.05))+scale_x_continuous(breaks=seq(-4, 5, 1))
+dev.off()
+
+pdf(file=paste(graph_dir, "/figs/StateDependenceScatter.pdf", sep=""), width=8, height=5)
+qplot(bhatd[, klag_ind], bhatd[, glag_ind], xlab = "KCup Adjustment", 
+      ylab = "Ground Coffee State Dependence") + theme_bw()
+dev.off()
+#----------------------------------------------------------------------------------------------------#
+# Plot the MCMC Draws by Brands and Flavors
+
+
 
 # Storage estimates by market
 x_var = list(n=rep(1, nm), mu=matrix(1:(np*nm), nrow=nm), sig=array(rep(1,np*np*nm), dim=c(np, np, nm)))
