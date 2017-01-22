@@ -190,7 +190,7 @@ gc()
 # Bayesian Estimation 
 # MCMC Settings
 burnin = 0
-thin   = 6
+thin   = 3
 draws  = 10000
 totdraws = draws*thin + burnin
 
@@ -253,7 +253,7 @@ for (d in 1:totdraws){
 }
 
 # Save output to a dataset
-inx = seq(1, 10000, 4)
+inx = seq(1, 10000, 2)
 bindv = bindv[inx,,]
 save(hh_code_list, bhatd, sigd, bindv, bnames, 
      file = paste(output_dir, "MDCEV-MCMC-All-60000.RData", sep = ""))
