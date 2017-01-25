@@ -256,5 +256,5 @@ for (d in 1:totdraws){
 inx = seq(1, 10000, 2)
 bindv = bindv[inx,,]
 save(hh_code_list, bhatd, sigd, bindv, bnames, 
-     file = paste(output_dir, "MDCEV-MCMC-All-60000.RData", sep = ""))
+     file = paste(output_dir, "MDCEV-MCMC-All-30000.RData", sep = ""))
 stopCluster(cl)

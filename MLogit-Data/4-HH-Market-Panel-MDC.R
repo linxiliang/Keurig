@@ -95,7 +95,6 @@ brand_size_type_sales[, rcumshare:=cumsum(rshare), by=c("dma_code", "ptype", "ke
 brand_size_type_sales[, rcumshare:=rcumshare-rshare]
 
 # Merge the criteria into the hh_market_prod
-onames = names(hh_market_prod)
 setkeyv(brand_size_type_sales, c("dma_code", "ptype", "keurig", "brand_descr", "roast", 
                                  "flavored", "kona", "colombian", "sumatra", "wb"))
 setkeyv(hh_market_prod, c("dma_code", "ptype", "keurig", "brand_descr", "roast", 
@@ -103,7 +102,6 @@ setkeyv(hh_market_prod, c("dma_code", "ptype", "keurig", "brand_descr", "roast",
 hh_market_prod = brand_size_type_sales[hh_market_prod]
 hh_market_prod = hh_market_prod[rcumshare<=0.85|keurig==1, ]
 hh_market_prod[,`:=`(rshare=NULL)]
-setcolorder(hh_market_prod, onames)
 gc()
 
 # Get rid of extreme prices -- below 0.05% percentile and 99.95% percentile 
@@ -201,7 +199,7 @@ name_order = c("household_code", "trip_code_uc", "dma_code", "hh", "t", "brand_d
                "keurig",  "flavored", "roast", "lightR", "mediumR", "medDR", "darkR", "assorted", "kona",
                "colombian", "sumatra", "wb", "price", "brand_lag", "brand_lag_keurig", "brand_cum", 
                "brand_cum_sq", "brand_cum_log", "total_spent", "purchased", "size","total_price_paid", 
-               "coupon_value", "brand_descr_orig")
+               "coupon_value", "brand_descr_orig", "kholding")
 hh_market_prod = hh_market_prod[, name_order, with = FALSE]
 
 save(hh_market_prod, hh_demo, file = paste(output_dir,"/MDC-Cond-Purchase-Flavors.RData", sep=""))

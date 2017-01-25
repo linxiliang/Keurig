@@ -25,18 +25,24 @@ graph_dir = "Tabfigs/MCMC-Summaries"
 code_dir = "Scripts/MCMC-Summaries"
 #----------------------------------------------------------------------------------------------------#
 # Load Estimation Results
-load(paste(input_dir, "/MDCEV-MCMC-All-90000.RData", sep=""))
+load(paste(input_dir, "/MDCEV-MCMC-All-30000.RData", sep=""))
 
-brands = c("0OTHER", "CARIBOU KEURIG", "CHOCK FULL O NUTS", "CTL BR", "DONUT HOUSE KEURIG", "DUNKIN' DONUTS",
-           "EIGHT O'CLOCK", "FOLGERS", "FOLGERS KEURIG", "GREEN MOUNTAIN KEURIG", "MAXWELL HOUSE", 
-           "MILLSTONE", "NEWMAN'S OWN ORGANICS KEURIG", "STARBUCKS", "STARBUCKS KEURIG")
-features = c("brand", "keurig", "flavored", "lightR", "medDR", "darkR", "assorted", "kona", "colombian", "sumatra", "wb")
-xnames = c(brands, features[2:length(features)], "brand_lag_keurig", "brand_lag", 'ground_alpha', 'keurig_alpha')
-k_ind = which(xnames=="keurig")-1
+# Burnin
+burnin = 1000
+d_ind = c((burnin+1):dim(bindv)[1])
+
+brands=c("0OTHER", "CARIBOU KEURIG", "CHOCK FULL O NUTS", "CTL BR", "DONUT HOUSE KEURIG", 
+         "DUNKIN' DONUTS", "EIGHT O'CLOCK", "FOLGERS", "FOLGERS KEURIG", "GREEN MOUNTAIN KEURIG", 
+         "MAXWELL HOUSE", "NEWMAN'S OWN ORGANICS KEURIG", "STARBUCKS", "STARBUCKS KEURIG", "TULLY'S KEURIG")
+features=c("brand", "keurig", "flavored", "lightR", "medDR", "darkR", 
+           "assorted", "kona", "colombian", "sumatra", "wb")
+xnames=c(brands, features[2:length(features)], "brand_lag_keurig", 
+         "brand_lag", 'ground_alpha', 'keurig_alpha')
+k_ind=which(xnames=="keurig")-1
 
 nb = length(brands)
 nh = dim(bindv)[2]
-ndraws = dim(bindv)[1]
+ndraws = (dim(bindv)[1] - burnin)
 r2_tab = matrix(rep(0, ndraws*4), ncol=4)
 
 b_ind_list = NULL
@@ -54,7 +60,7 @@ hh_var_tab[, value:=as.numeric(NA)]
 
 # Construct table 
 for (d in 1:ndraws){
-  indv_dt = bindv[d,,]
+  indv_dt = bindv[(d+burnin),,]
   gc()
 
   # Modify bindv so that Keurig brands have the values built in
@@ -91,11 +97,47 @@ for (d in 1:ndraws){
 }
 rm(bindv)
 gc()
-hh_var_tab[, `:=`(hh=rep(1:nh, ndraws*4), vtype=rep(sort(rep(1:5, nh)), ndraws))]
-
+hh_var_tab[, `:=`(hh=rep(1:nh, ndraws*5), vtype=rep(sort(rep(1:5, nh)), ndraws))]
+save(hh_var_tab, r2_tab, file = "~/Desktop/HH-Var-Decomposition.RData")
 #----------------------------------------------------------------------------------------------------#
-
 # Make the corresponding graphs
 
+# R-squared distribution
+r2_tab = data.table(r2_tab)
+setnames(r2_tab, c("V1", "V2", "V3", "V4"), c("Keurig", "Brand", "Household", "BrandHousehold"))
+g1 = ggplot(r2_tab, aes(x=Keurig))+theme_bw()+labs(list(title="Keurig", x="R-Squared", y="Density"))+
+  geom_histogram(bins = 20, aes(y = ..density..), fill = "skyblue", colour="black")+
+  geom_vline(xintercept = quantile(r2_tab[, Keurig], c(0.025, 0.50, 0.975)))
+g2 = ggplot(r2_tab, aes(x=Brand))+theme_bw()+labs(list(title="Brand", x="R-Squared", y="Density"))+
+  geom_histogram(bins = 20, aes(y = ..density..), fill = "skyblue", colour="black")+
+  geom_vline(xintercept = quantile(r2_tab[, Brand], c(0.025, 0.50, 0.975)))
+g3 = ggplot(r2_tab, aes(x=Household))+theme_bw()+labs(list(title="Household", x="R-Squared", y="Density"))+
+  geom_histogram(bins = 20, aes(y = ..density..), fill = "skyblue", colour="black")+
+  geom_vline(xintercept = quantile(r2_tab[, Household], c(0.025, 0.50, 0.975)))
+g4 = ggplot(r2_tab, aes(x=BrandHousehold))+theme_bw()+
+  labs(list(title="Brand+Household", x="R-Squared", y="Density"))+
+  geom_histogram(bins = 20, aes(y = ..density..), fill = "skyblue", colour="black")+
+  geom_vline(xintercept = quantile(r2_tab[, BrandHousehold], c(0.025, 0.50, 0.975)))
+multplot = marrangeGrob(list(g1, g2, g3, g4), ncol=2, nrow=2, top="")
+ggsave(paste(graph_dir, "/figs/R2-Draws.pdf", sep=""), multplot, width=7, height=7)
 
+
+# Make the corresponding graphs
+r2_tab = data.table(r2_tab)
+setnames(r2_tab, c("V1", "V2", "V3", "V4"), c("Keurig", "Brand", "Household", "BrandHousehold"))
+g1 = ggplot(r2_tab, aes(x=Keurig))+theme_bw()+labs(list(title="Keurig", x="R-Squared", y="Density"))+
+  geom_histogram(bins = 20, aes(y = ..density..), fill = "skyblue", colour="black")+
+  geom_vline(xintercept = quantile(r2_tab[, Keurig], c(0.025, 0.50, 0.975)))
+g2 = ggplot(r2_tab, aes(x=Brand))+theme_bw()+labs(list(title="Brand", x="R-Squared", y="Density"))+
+  geom_histogram(bins = 20, aes(y = ..density..), fill = "skyblue", colour="black")+
+  geom_vline(xintercept = quantile(r2_tab[, Brand], c(0.025, 0.50, 0.975)))
+g3 = ggplot(r2_tab, aes(x=Household))+theme_bw()+labs(list(title="Household", x="R-Squared", y="Density"))+
+  geom_histogram(bins = 20, aes(y = ..density..), fill = "skyblue", colour="black")+
+  geom_vline(xintercept = quantile(r2_tab[, Household], c(0.025, 0.50, 0.975)))
+g4 = ggplot(r2_tab, aes(x=BrandHousehold))+theme_bw()+
+  labs(list(title="Brand+Household", x="R-Squared", y="Density"))+
+  geom_histogram(bins = 20, aes(y = ..density..), fill = "skyblue", colour="black")+
+  geom_vline(xintercept = quantile(r2_tab[, BrandHousehold], c(0.025, 0.50, 0.975)))
+multplot = marrangeGrob(list(g1, g2, g3, g4), ncol=2, nrow=2, top="")
+ggsave(paste(graph_dir, "/figs/R2-Draws.pdf", sep=""), multplot, width=7, height=7)
 #----------------------------------------------------------------------------------------------------#

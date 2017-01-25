@@ -9,6 +9,7 @@
 
 # Settings
 rm(list = ls())
+gc()
 
 # Packages
 library(data.table)
@@ -26,7 +27,11 @@ graph_dir = "Tabfigs/MCMC-Summaries"
 load(paste(meta_dir, "HH.RData", sep=""))
 #----------------------------------------------------------------------------------------------------#
 # Load Estimation Results
-load(paste(input_dir, "/MDCEV-MCMC-All-90000.RData", sep=""))
+load(paste(input_dir, "/MDCEV-MCMC-All-30000.RData", sep=""))
+
+# Burnin
+burnin = 4000
+d_ind = c((burnin+1):dim(bhatd)[1])
 
 big_markets = c(501, 506, 504, 602, 803, 511, 539, 623, 618, 505, 
                 613, 819, 524, 534, 533, 753, 510, 508, 514, 512, 
@@ -41,7 +46,7 @@ for (mcode in big_markets){
 
 brands = c("0OTHER", "CARIBOU KEURIG", "CHOCK FULL O NUTS", "CTL BR", "DONUT HOUSE KEURIG", "DUNKIN' DONUTS",
            "EIGHT O'CLOCK", "FOLGERS", "FOLGERS KEURIG", "GREEN MOUNTAIN KEURIG", "MAXWELL HOUSE", 
-           "MILLSTONE", "NEWMAN'S OWN ORGANICS KEURIG", "STARBUCKS", "STARBUCKS KEURIG")
+           "NEWMAN'S OWN ORGANICS KEURIG", "STARBUCKS", "STARBUCKS KEURIG", "TULLY'S KEURIG")
 features = c("brand", "keurig", "flavored", "lightR", "medDR", "darkR", "assorted", "kona", "colombian", "sumatra", "wb")
 xnames = c(brands, features[2:length(features)], "brand_lag_keurig", "brand_lag", 'ground_alpha', 'keurig_alpha')
 
@@ -64,9 +69,9 @@ for (b in brands){
     if (b=="0OTHER"){
       if (f!="brand"){
         ind_f = which(xnames==f) - 1
-        p_table[b, f] = median(bhatd[,ind_f])
-        p_table[b, fl] = quantile(bhatd[,ind_f], 0.025)
-        p_table[b, fh] = quantile(bhatd[,ind_f], 0.975)
+        p_table[b, f] = median(bhatd[d_ind, ind_f])
+        p_table[b, fl] = quantile(bhatd[d_ind, ind_f], 0.025)
+        p_table[b, fh] = quantile(bhatd[d_ind, ind_f], 0.975)
       }
     } else{
       ind_k = which(xnames=="keurig")-1
@@ -74,20 +79,20 @@ for (b in brands){
       if (f!="brand"){
         ind_f = which(xnames==f)-1
         if (f=="keurig" | !(grepl("KEURIG", b))){
-          p_table[b, f] = median(bhatd[,ind_b]+bhatd[,ind_f])
-          p_table[b, fl] = quantile(bhatd[,ind_b]+bhatd[,ind_f], 0.025)
-          p_table[b, fh] = quantile(bhatd[,ind_b]+bhatd[,ind_f], 0.975)
+          p_table[b, f] = median(bhatd[d_ind, ind_b]+bhatd[d_ind,ind_f])
+          p_table[b, fl] = quantile(bhatd[d_ind, ind_b]+bhatd[d_ind,ind_f], 0.025)
+          p_table[b, fh] = quantile(bhatd[d_ind, ind_b]+bhatd[d_ind,ind_f], 0.975)
         } else{
           ind_f = which(xnames==f) - 1
-          p_table[b, f] = median(bhatd[,ind_b]+bhatd[,ind_k]+bhatd[,ind_f])
-          p_table[b, fl] = quantile(bhatd[,ind_b]+bhatd[,ind_k]+bhatd[,ind_f], 0.025)
-          p_table[b, fh] = quantile(bhatd[,ind_b]+bhatd[,ind_k]+bhatd[,ind_f], 0.975)
+          p_table[b, f] = median(bhatd[d_ind,ind_b]+bhatd[d_ind,ind_k]+bhatd[d_ind,ind_f])
+          p_table[b, fl] = quantile(bhatd[d_ind,ind_b]+bhatd[d_ind,ind_k]+bhatd[d_ind,ind_f], 0.025)
+          p_table[b, fh] = quantile(bhatd[d_ind,ind_b]+bhatd[d_ind,ind_k]+bhatd[d_ind,ind_f], 0.975)
         }
       } else{
         ind_b = which(xnames==b)-1
-        p_table[b, f] = median(bhatd[,ind_b])
-        p_table[b, fl] = quantile(bhatd[,ind_b], 0.025)
-        p_table[b, fh] = quantile(bhatd[,ind_b], 0.975)
+        p_table[b, f] = median(bhatd[d_ind,ind_b])
+        p_table[b, fl] = quantile(bhatd[d_ind,ind_b], 0.025)
+        p_table[b, fh] = quantile(bhatd[d_ind,ind_b], 0.975)
       }
     }
   }
@@ -104,14 +109,16 @@ kgrid = seq(-4, 3, 0.01)
 ggrid = seq(-2, 5, 0.01)
 gsize = length(ggrid)
 if (gsize!=length(kgrid)) stop("Keurig Adjustment and Ground Coffee Grid size is not the same")
-draws = dim(bhatd)[1]
+draws = dim(bhatd)[1] - burnin
 
 # Initialize dataset to store percentiles
 kd_mat = matrix(rep(0, gsize*draws), nrow=draws)
 gd_mat = matrix(rep(0, gsize*draws), nrow=draws)
 for (d in 1:draws){
-  kd_mat[d, ] = dnorm(kgrid, mean = bhatd[d, klag_ind], sd = sqrt(sigd[klag_ind, klag_ind, d]))
-  gd_mat[d, ] = dnorm(ggrid, mean = bhatd[d, glag_ind], sd = sqrt(sigd[glag_ind, glag_ind, d]))
+  kd_mat[d, ] = dnorm(kgrid, mean = bhatd[(d+burnin), klag_ind], 
+                      sd = sqrt(sigd[klag_ind, klag_ind, (d+burnin)]))
+  gd_mat[d, ] = dnorm(ggrid, mean = bhatd[(d+burnin), glag_ind], 
+                      sd = sqrt(sigd[glag_ind, glag_ind, (d+burnin)]))
 }
 
 # Obtain the percentiles in grid 
@@ -125,8 +132,10 @@ rm(kd_mat, gd_mat)
 gc()
 
 # Create the dataset for graphs
-dat0 = data.table(grid_points=kgrid, den0=kd_pct[,1], den1=kd_pct[,2], den2=kd_pct[,3], Parameter = "KCup Adjustment")
-dat1 = data.table(grid_points=ggrid, den0=gd_pct[,1], den1=gd_pct[,2], den2=gd_pct[,3], Parameter = "Ground")
+dat0 = data.table(grid_points=kgrid, den0=kd_pct[,1], den1=kd_pct[,2], 
+                  den2=kd_pct[,3], Parameter = "KCup Adjustment")
+dat1 = data.table(grid_points=ggrid, den0=gd_pct[,1], den1=gd_pct[,2], 
+                  den2=gd_pct[,3], Parameter = "Ground")
 dat = rbindlist(list(dat0, dat1))
 pdf(file=paste(graph_dir, "/figs/StateDependenceDensity.pdf", sep=""), width=8, height=5)
 ggplot(dat, aes(x=grid_points, y=den1, group=Parameter, colour=Parameter))+geom_line()+
@@ -136,7 +145,7 @@ ggplot(dat, aes(x=grid_points, y=den1, group=Parameter, colour=Parameter))+geom_
 dev.off()
 
 pdf(file=paste(graph_dir, "/figs/StateDependenceScatter.pdf", sep=""), width=8, height=5)
-qplot(bhatd[, klag_ind], bhatd[, glag_ind], xlab = "KCup Adjustment", 
+qplot(bhatd[d_ind, klag_ind], bhatd[d_ind, glag_ind], xlab = "KCup Adjustment", 
       ylab = "Ground Coffee State Dependence") + theme_bw()
 dev.off()
 
@@ -151,14 +160,15 @@ kgrid = xgrid*(0.99999-0.7)+0.7
 ggrid = xgrid*(0.99999-0.9)+0.9
 gsize = length(ggrid)
 if (gsize!=length(kgrid)) stop("KCup and Ground Coffee Grid size is not the same")
-draws = dim(bhatd)[1]
 
 # Initialize dataset to store percentiles
 kd_mat = matrix(rep(0, gsize*draws), nrow=draws)
 gd_mat = matrix(rep(0, gsize*draws), nrow=draws)
 for (d in 1:draws){
-  kd_mat[d, ] = dnorm(log(kgrid/(1-kgrid)), mean = bhatd[d, ksa_ind], sd = sqrt(sigd[ksa_ind, ksa_ind, d]))
-  gd_mat[d, ] = dnorm(log(ggrid/(1-ggrid)), mean = bhatd[d, gsa_ind], sd = sqrt(sigd[gsa_ind, gsa_ind, d]))
+  kd_mat[d, ] = dnorm(log(kgrid/(1-kgrid)), mean = bhatd[(d+burnin), ksa_ind], 
+                      sd = sqrt(sigd[ksa_ind, ksa_ind, (d+burnin)]))
+  gd_mat[d, ] = dnorm(log(ggrid/(1-ggrid)), mean = bhatd[(d+burnin), gsa_ind], 
+                      sd = sqrt(sigd[gsa_ind, gsa_ind, (d+burnin)]))
   kd_mat[d, ] = kd_mat[d, ] * 1/(kgrid*(1-kgrid))
   gd_mat[d, ] = gd_mat[d, ] * 1/(ggrid*(1-ggrid))
 }
@@ -174,8 +184,10 @@ rm(kd_mat, gd_mat)
 gc()
 
 # Create the dataset for graphs
-dat0 = data.table(grid_points=kgrid, den0=kd_pct[,1], den1=kd_pct[,2], den2=kd_pct[,3], Parameter = "KCup")
-dat1 = data.table(grid_points=ggrid, den0=gd_pct[,1], den1=gd_pct[,2], den2=gd_pct[,3], Parameter = "Ground")
+dat0 = data.table(grid_points=kgrid, den0=kd_pct[,1], den1=kd_pct[,2], 
+                  den2=kd_pct[,3], Parameter = "KCup")
+dat1 = data.table(grid_points=ggrid, den0=gd_pct[,1], den1=gd_pct[,2], 
+                  den2=gd_pct[,3], Parameter = "Ground")
 dat = rbindlist(list(dat0, dat1))
 pdf(file=paste(graph_dir, "/figs/SatiationDensity.pdf", sep=""), width=8, height=5)
 ggplot(dat, aes(x=grid_points, y=den1, group=Parameter, colour=Parameter))+geom_line()+
@@ -185,8 +197,8 @@ ggplot(dat, aes(x=grid_points, y=den1, group=Parameter, colour=Parameter))+geom_
 dev.off()
 
 pdf(file=paste(graph_dir, "/figs/SatiationScatter.pdf", sep=""), width=8, height=5)
-qplot(exp(bhatd[, ksa_ind])/(1+exp(bhatd[, ksa_ind])), 
-      exp(bhatd[, gsa_ind])/(1+exp(bhatd[, gsa_ind])), xlab = "KCup", 
+qplot(exp(bhatd[d_ind, ksa_ind])/(1+exp(bhatd[d_ind, ksa_ind])), 
+      exp(bhatd[d_ind, gsa_ind])/(1+exp(bhatd[d_ind, gsa_ind])), xlab = "KCup", 
       ylab = "Ground Coffee State Dependence") + theme_bw()
 dev.off()
 
@@ -212,11 +224,11 @@ for (xl in xlabels){
   xind = which(xlabels==xl)
   dat = data.table(bhatd[, xind])
   dat[, Draws := 1:.N]
-  y_low  = min(bhatd[, xind])-0.5
-  y_high = max(bhatd[, xind])+0.5
+  #y_low  = min(bhatd[, xind])-0.5
+  #y_high = max(bhatd[, xind])+0.5
   j = ifelse(i%%ngraph==0, ngraph, i%%ngraph)
   gph[[j]] = ggplot(dat, aes(x=Draws, y=V1))+geom_line(color="skyblue", size=0.2)+theme_bw()+ 
-    ylim(y_low, y_high)+theme(axis.title=element_text(size=8))+ylab(xl)
+    theme(axis.title=element_text(size=8))+ylab(xl)
   if (i%%ngraph==0 | i==length(xlabels)){
     k = k+1
     multplot = marrangeGrob(gph, ncol=nc, nrow=nr, top="")

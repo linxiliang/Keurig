@@ -135,8 +135,8 @@ setkey(hh_panel, household_code, week_end)
 gc()
 
 # Take the last part of markov chain to estimate consumer preferences
-indx = seq(1, 2500, 1)
-load('Data/Bayes-MCMC/MDCEV-MCMC-All-90000.RData')
+indx = seq(1001, 2500, 1)
+load('Data/Bayes-MCMC/MDCEV-MCMC-All-30000.RData')
 bindv[, ,27:28] = exp(bindv[, ,27:28])/(1+exp(bindv[, ,27:28]))
 pref = colMeans(bindv[indx, ,], 2)
 rownames(pref) = hh_code_list[, household_code]
@@ -227,9 +227,9 @@ hhValFun<-function(i){
   # Monte Carlo Integration
   # Vectorization is the key
   starttime <- proc.time()
-  for (j in 1:3000){
+  for (j in 1:1000){
     # Simulate eps
-    hh_retailers_temp[, eps:=runif(nobs)]
+    hh_retailers_temp[, eps:=-log(-log(runif(nobs)))]
     # Simulate E
     E = exp(rnorm(1, mean=pref[as.character(i), 29], sd= pref[as.character(i), 30]))
     
@@ -242,7 +242,7 @@ hhValFun<-function(i){
     uall_cum[dt_v0$idx] = uall_cum[dt_v0$idx] + dt_v0$ubar
     hh_retailers_temp[, `:=`(fil1 = as.integer(U0>max(UE))), by = .(idx, keurig)]
     if (nrow(hh_retailers_temp[fil1>=0.9&keurig<=0.1,])==0){
-      ugrd_cum = ugrd_cum + E #no ground, get outside option
+      ugrd_cum = 0 #no ground, get no value
     } else{
       dt_v1 = hh_retailers_temp[fil1>=0.9&keurig<=0.1,
                                 .(ubar=eu2(min(UE-0.00001), max(U0+0.00001), 
@@ -252,7 +252,7 @@ hhValFun<-function(i){
     }
     #cat("Processed", j, "after", proc.time()-starttime, "seconds.\n\n")
   }
-  hh_agg[, `:=`(uall=uall_cum/3000, ugrd=ugrd_cum/3000, idx=NULL)]
+  hh_agg[, `:=`(uall=uall_cum/1000, ugrd=ugrd_cum/1000, idx=NULL)]
   hh_agg[, `:=`(mu_diff=uall-ugrd)]
   hh_agg = hh_agg[, .(mu_diff = sum(mu_diff * tprob)/sum(tprob),
                       uall = sum(uall * tprob)/sum(tprob),
@@ -263,7 +263,7 @@ hhValFun<-function(i){
   return(hh_agg)
 }
 invisible(clusterEvalQ(cl, load('Data/Machine-Adoption/MU-Diff-Asist.RData')))
-clusterExport(cl, c('pref', 'xvars', 'hhValFun', 'eu2'))
+clusterExport(cl, c('pref', 'xvars', 'hhValFun'))
 cval_list = parLapply(cl, hh_codes, hhValFun)
 cval_list = rbindlist(cval_list)
 save(cval_list, file = paste(output_dir, "/HH-Util-Diff-Exp.RData", sep=""))
