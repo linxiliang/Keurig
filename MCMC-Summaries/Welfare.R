@@ -80,7 +80,7 @@ eu <- function(umin, umax, alpha, zb, p, eps, E){
       return(1/alpha[ind0] * exp(zb[ind0] + eps[ind0]) * ((E/p[ind0] + 1)^alpha[ind0]-1))
     } else{
       return(sum(1/alpha[ind0] * exp(zb[ind0] + eps[ind0]) *
-                       ((Spent[ind0]/p[ind0] + 1)^alpha[ind0]-1)))
+                   ((Spent[ind0]/p[ind0] + 1)^alpha[ind0]-1)))
     }
   }
 }
@@ -90,8 +90,8 @@ vfun = function(E, alpha, zb, p, eps, u){
   UE = 1/p * exp(zb + eps)*(E/p+1)^(alpha-1)
   U0 = 1/p * exp(zb + eps)
   sind = which(U0>max(UE))
-  umin = min(UE[sind])-0.00001
-  umax = max(U0[sind])+0.00001
+  umin = min(UE[sind])-0.00000001
+  umax = max(U0[sind])+0.00000001
   return(eu(umin, umax, alpha[sind], zb[sind], p[sind], eps[sind], E) - u)
 }
 
@@ -102,7 +102,7 @@ CVfun<-function(alpha, zb, p, eps, u){
     umax = 10*umax
     udiff = vfun(umax, alpha = alpha, zb=zb, p = p, eps = eps, u = u)
   }
-  CV = uniroot(vfun, c(0.00001, umax), alpha = alpha, 
+  CV = uniroot(vfun, c(0.001, umax), alpha = alpha, 
                zb=zb, p = p, eps = eps, u = u, tol=1e-16)
   return(CV$root)
 }
@@ -116,10 +116,12 @@ setkeyv(hh_market_prod, c("household_code", "t", "brand", "roast"))
 # Do the welfare analysis only for households on the platform
 hh_market_prod = hh_market_prod[kholding==1, ]
 
-# Drop cases where Keurig is available -- not sure how to deal with it. 
-hh_market_prod[, any_ground := sum(keurig==0), by = c("hh", "t")]
-hh_market_prod = hh_market_prod[any_ground>=5, ]
-hh_market_prod[, any_ground:=NULL]
+# Drop cases where only Keurig is available -- not sure how to deal with it.
+# Drop cases if spending is below $1 -- likely to be very special cases
+hh_market_prod[, `:=`(any_ground = sum(keurig==0), total_trip_paid = sum(total_price_paid)), 
+               by = c("hh", "t")]
+hh_market_prod = hh_market_prod[any_ground>=5&total_trip_paid>=1, ]
+hh_market_prod[, `:=`(any_ground=NULL, total_trip_paid=NULL)]
 
 # Take the last part of markov chain to estimate consumer preferences
 indx = seq(1001, 2500, 1)
@@ -181,20 +183,6 @@ for (i in 1:mc_draws){
   cat("Draw", i, "Finished out of", mc_draws, ".\n\n")
 }
 
-## Monte Carlo Estimation of CV
-hh_agg = hh_market_prod[keurig==0, .(cval = 0), by = c("household_code", "t")]
-nr = nrow(hh_market_prod)
-mc_draws = 1000
-for (i in 1:mc_draws){
-  # Generate the type 1 EV draw
-  hh_market_prod[, `:=`(eps=-log(-log(runif(nr))))]
-  hh_market_prod[, `:=`(EC=sum(total_price_paid)), by = c("household_code", "t")]
-  hh_market_prod[,  uall := vfun(EC[1], alpha, zb, price, eps, 0), by = c("household_code", "t")]
-  hh_temp = hh_market_prod[keurig==0, .(cv_all = CVfun(alpha, zb, price, eps, uall[1])), 
-                          by = c("household_code", "t")]
-  hh_agg[, cval := cval + hh_temp$cv_all]
-  cat("Draw", i, "Finished out of", mc_draws, ".\n\n")
-}
-
-
-# 
+# Stop Cluster
+stopCluster(cl)
+save(hh_agg, file = "~/Desktop/Welfare.RData")

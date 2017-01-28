@@ -237,16 +237,16 @@ hhValFun<-function(i){
     hh_retailers_temp[, `:=`(UE = 1/price * exp(zb + eps)*(E/price+1)^(alpha-1),
                              U0 = 1/price * exp(zb + eps))]
     hh_retailers_temp[, `:=`(fil0 = as.integer(U0>max(UE))), by = .(idx)]
-    dt_v0 = hh_retailers_temp[fil0>=0.9, .(ubar = eu2(min(UE-0.00001), max(U0+0.00001), 
-                                                      alpha, zb, price, eps, E)), by = .(idx)]
+    dt_v0 = hh_retailers_temp[fil0>=0.9, .(ubar = log(eu2(min(UE-0.00001), max(U0+0.00001), 
+                                                      alpha, zb, price, eps, E))), by = .(idx)]
     uall_cum[dt_v0$idx] = uall_cum[dt_v0$idx] + dt_v0$ubar
     hh_retailers_temp[, `:=`(fil1 = as.integer(U0>max(UE))), by = .(idx, keurig)]
     if (nrow(hh_retailers_temp[fil1>=0.9&keurig<=0.1,])==0){
       ugrd_cum = 0 #no ground, get no value
     } else{
       dt_v1 = hh_retailers_temp[fil1>=0.9&keurig<=0.1,
-                                .(ubar=eu2(min(UE-0.00001), max(U0+0.00001), 
-                                           alpha, zb, price, eps, E)), by = .(idx)]
+                                .(ubar=log(eu2(min(UE-0.00001), max(U0+0.00001), 
+                                           alpha, zb, price, eps, E))), by = .(idx)]
       ugrd_cum[dt_v1$idx] = ugrd_cum[dt_v1$idx] + dt_v1$ubar
       ugrd_cum[-dt_v1$idx] = ugrd_cum[-dt_v1$idx] + 0 #no ground, get no value
     }
@@ -266,7 +266,7 @@ invisible(clusterEvalQ(cl, load('Data/Machine-Adoption/MU-Diff-Asist.RData')))
 clusterExport(cl, c('pref', 'xvars', 'hhValFun'))
 cval_list = parLapply(cl, hh_codes, hhValFun)
 cval_list = rbindlist(cval_list)
-save(cval_list, file = paste(output_dir, "/HH-Util-Diff-Exp.RData", sep=""))
+save(cval_list, file = paste(output_dir, "/HH-Util-Diff.RData", sep=""))
 
 load(paste(output_dir, "/HH-Util-Diff.RData", sep=""))
 load(paste(output_dir, "/HH-HW-Panel.RData", sep=""))

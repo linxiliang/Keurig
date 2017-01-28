@@ -66,7 +66,7 @@ for (d in 1:ndraws){
   # Modify bindv so that Keurig brands have the values built in
   for (b_ind in b_ind_list) indv_dt[,b_ind] = indv_dt[,b_ind] + indv_dt[,k_ind]
   
-  indv_dt = indv_dt[, 1:nb]
+  indv_dt = indv_dt[, 1:≈]
   indv_dt = data.table(value = as.vector(t(indv_dt)))
   indv_dt[, hh := sort(rep(1:nh, nb))]
   indv_dt[, brand := rep(1:nb, nh)]
@@ -101,11 +101,10 @@ hh_var_tab[, `:=`(hh=rep(1:nh, ndraws*5), vtype=rep(sort(rep(1:5, nh)), ndraws))
 save(hh_var_tab, r2_tab, file = "~/Desktop/HH-Var-Decomposition.RData")
 #----------------------------------------------------------------------------------------------------#
 # Make the corresponding graphs
-
 # R-squared distribution
 r2_tab = data.table(r2_tab)
 setnames(r2_tab, c("V1", "V2", "V3", "V4"), c("Keurig", "Brand", "Household", "BrandHousehold"))
-g1 = ggplot(r2_tab, aes(x=Keurig))+theme_bw()+labs(list(title="Keurig", x="R-Squared", y="Density"))+
+g1 = ggplot(r2_tab, aes(x=Keurig))+theme_bw()+labs(list(title="K-Cup", x="R-Squared", y="Density"))+
   geom_histogram(bins = 20, aes(y = ..density..), fill = "skyblue", colour="black")+
   geom_vline(xintercept = quantile(r2_tab[, Keurig], c(0.025, 0.50, 0.975)))
 g2 = ggplot(r2_tab, aes(x=Brand))+theme_bw()+labs(list(title="Brand", x="R-Squared", y="Density"))+
@@ -123,21 +122,21 @@ ggsave(paste(graph_dir, "/figs/R2-Draws.pdf", sep=""), multplot, width=7, height
 
 
 # Make the corresponding graphs
-r2_tab = data.table(r2_tab)
-setnames(r2_tab, c("V1", "V2", "V3", "V4"), c("Keurig", "Brand", "Household", "BrandHousehold"))
-g1 = ggplot(r2_tab, aes(x=Keurig))+theme_bw()+labs(list(title="Keurig", x="R-Squared", y="Density"))+
-  geom_histogram(bins = 20, aes(y = ..density..), fill = "skyblue", colour="black")+
-  geom_vline(xintercept = quantile(r2_tab[, Keurig], c(0.025, 0.50, 0.975)))
-g2 = ggplot(r2_tab, aes(x=Brand))+theme_bw()+labs(list(title="Brand", x="R-Squared", y="Density"))+
-  geom_histogram(bins = 20, aes(y = ..density..), fill = "skyblue", colour="black")+
-  geom_vline(xintercept = quantile(r2_tab[, Brand], c(0.025, 0.50, 0.975)))
-g3 = ggplot(r2_tab, aes(x=Household))+theme_bw()+labs(list(title="Household", x="R-Squared", y="Density"))+
-  geom_histogram(bins = 20, aes(y = ..density..), fill = "skyblue", colour="black")+
-  geom_vline(xintercept = quantile(r2_tab[, Household], c(0.025, 0.50, 0.975)))
-g4 = ggplot(r2_tab, aes(x=BrandHousehold))+theme_bw()+
-  labs(list(title="Brand+Household", x="R-Squared", y="Density"))+
-  geom_histogram(bins = 20, aes(y = ..density..), fill = "skyblue", colour="black")+
-  geom_vline(xintercept = quantile(r2_tab[, BrandHousehold], c(0.025, 0.50, 0.975)))
-multplot = marrangeGrob(list(g1, g2, g3, g4), ncol=2, nrow=2, top="")
-ggsave(paste(graph_dir, "/figs/R2-Draws.pdf", sep=""), multplot, width=7, height=7)
+hh_var_tab[vtype==1, value:=value/7]
+hh_var_tab[vtype==2, value:=value/7]
+hh_var_tab[vtype==3, value:=value/14]
+hh_var_tab[vtype==4, value:=value/7]
+hh_var_tab[vtype==5, value:=value/7]
+setkey(hh_var_tab, iter, hh, vtype)
+hh_var_tab = hh_var_tab[vtype %in% c(1, 2), ]
+hh_var_tab = hh_var_tab[, .(value=mean(value)), by = c("hh", "vtype")]
+
+g1 = ggplot(hh_var_tab[vtype==1, ], aes(x=value))+theme_bw()+labs(list(title="Ground", x="Variance", y="Density"))+
+  geom_histogram(bins = 40, aes(y = ..density..), fill = "skyblue", colour="black")+ xlim(0,15) +
+  geom_vline(xintercept = quantile(hh_var_tab[vtype==1, value], c(0.025, 0.50, 0.975)))
+g2 = ggplot(hh_var_tab[vtype==2, ], aes(x=value))+theme_bw()+labs(list(title="K-Cup", x="Variance", y="Density"))+
+  geom_histogram(bins = 40, aes(y = ..density..), fill = "skyblue", colour="black")+ xlim(0,15) +
+  geom_vline(xintercept = quantile(hh_var_tab[vtype==2, value], c(0.025, 0.50, 0.975)))
+multplot = marrangeGrob(list(g1, g2), ncol=2, nrow=1, top="")
+ggsave(paste(graph_dir, "/figs/Var-Analysis.pdf", sep=""), multplot, width=7, height=3.5)
 #----------------------------------------------------------------------------------------------------#
