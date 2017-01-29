@@ -257,4 +257,6 @@ inx = seq(1, 10000, 2)
 bindv = bindv[inx,,]
 save(hh_code_list, bhatd, sigd, bindv, bnames, 
      file = paste(output_dir, "MDCEV-MCMC-All-30000.RData", sep = ""))
+save(hh_code_list, bhatd, sigd, bindv, bnames, 
+     file = "~/data/Nielsen-Data/MDCEV-MCMC-All-30000.RData")
 stopCluster(cl)

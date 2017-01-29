@@ -28,6 +28,10 @@ HMS_input_dir = "Data/HMS-Transactions"
 mlogit_dir = "Data/MLogit-Data"
 output_dir = "Data/Machine-Adoption"
 
+# Set seed
+RNGkind("L'Ecuyer-CMRG")
+set.seed(12345)
+
 # Source function
 source('Scripts/Two-Step-Demand/Machine-Adoption/UMax-functions.R')
 
@@ -35,7 +39,13 @@ source('Scripts/Two-Step-Demand/Machine-Adoption/UMax-functions.R')
 # Initialize Parallel Execution Environment
 cores = detectCores(logical=TRUE)
 cl = makeCluster(cores)
-
+s = .Random.seed
+for (i in 1:length(cl)) {
+  s = nextRNGStream(s)
+  clusterExport(cl[i], c('s'))
+  # send s to worker i as .Random.seed
+}
+invisible(clusterEvalQ(cl, .Random.seed <- s))
 #---------------------------------------------------------------------------------------------------#
 
 # Put relevant packages and functions on cluster
@@ -112,6 +122,14 @@ retailer_panel[, `:=`(lightR = as.integer(roast==1),
                       medDR = as.integer(roast==3),
                       darkR = as.integer(roast==4),
                       assorted = as.integer(roast==0))]
+# Brand types
+owned_brands = c("KEURIG KEURIG", "GREEN MOUNTAIN KEURIG")
+licensed_brands = c("CARIBOU KEURIG", "NEWMAN'S OWN ORGANICS KEURIG", "EIGHT O'CLOCK KEURIG")
+thirdp_brands = setdiff(unique(retailer_panel[keurig==1, brand_descr]), 
+                        c(owned_brands, licensed_brands))
+retailer_panel[, `:=`(owned=as.integer(brand_descr%in%owned_brands),
+                      licensed=as.integer(brand_descr%in%licensed_brands),
+                      thirdp=as.integer(brand_descr%in%thirdp_brands))]
 setkey(retailer_panel, dma_code, quarter, retailer_code, week_end)
 
 # Compute the probability of making a purchase
@@ -181,7 +199,7 @@ setkey(hh_trip_prob, household_code, dma_code, quarter, retailer_code)
 retailer_panel = retailer_panel[week_end>="2007-01-01", ]
 setkey(retailer_panel, dma_code, quarter, retailer_code, week_end)
 gc()
-save(hh_trip_prob, retailer_panel, hh_panel, file = "Data/Machine-Adoption/MU-Diff-Asist.RData")
+save(hh_trip_prob, retailer_panel, hh_panel, pref, file = "Data/Machine-Adoption/MU-Diff-Asist.RData")
 
 # Compute the adoption value consumer by consumer
 xvars = c(paste0("a", 2:15), "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
