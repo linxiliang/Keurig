@@ -123,11 +123,11 @@ totdraws = draws*thin + burnin;
 npar = n_x - 1  + n_z;
 
 bhat = zeros(Float64, npar)
-sigb = eye(npar)*100
-sigb[1, 1] = sigb[1,1]*10
+sigb = eye(npar)*10
+sigb[1, 1] = sigb[1,1]*100
 
 # Propose a starting value
-@everywhere theta0 = [10., -1.]
+@everywhere theta0 = [0.1, -0.1]
 @everywhere kappa0 = zeros(Float64, n_z)
 sigs = diagm([1., 0.01])
 walkdistr = MvNormal(zeros(n_x-1), sigs);

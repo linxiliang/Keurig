@@ -59,8 +59,11 @@ invisible(clusterEvalQ(cl, source('Scripts/Counterfactuals/machine-functions.R')
 # Load Datasets
 load("Data/Machine-Adoption/MU-Diff-Asist.RData")
 
-#---------------------------------------------------------------------------------------------------#
+# No variety seeking
+pref[, c(27,28)] = 1
+pref[, 25] = 0
 
+#---------------------------------------------------------------------------------------------------#
 # Brand Descriptions 
 brands = c("CARIBOU KEURIG", "CHOCK FULL O NUTS", "CTL BR", "DONUT HOUSE KEURIG", "DUNKIN' DONUTS",
            "EIGHT O'CLOCK", "FOLGERS", "FOLGERS KEURIG", "GREEN MOUNTAIN KEURIG", "MAXWELL HOUSE", 
@@ -102,7 +105,7 @@ hhRevFun<-function(i){
   hh_retailers_temp[, idx:=.GRP, by = .(household_code, dma_code, retailer_code, week_end)]
   setkey(hh_retailers_temp, idx)
   hh_retailers_temp[, `:=`(rev1=0, rev2=0, rev3=0)]
-
+  
   # Monte Carlo Integration
   # Vectorization is the key
   starttime <- proc.time()
@@ -149,13 +152,13 @@ hhRevFun<-function(i){
   hh_agg = hh_retailers_temp[, .(rev1 = sum(rev1 * tprob)/sum(tprob),
                                  rev2 = sum(rev2 * tprob)/sum(tprob),
                                  rev3 = sum(rev3 * tprob)/sum(tprob)),
-                      by = c("household_code", "brand_descr", "week_end", "pprob")]
+                             by = c("household_code", "brand_descr", "week_end", "pprob")]
   hh_agg = hh_agg[, .(rev1 = rev1 * pprob, rev2 = rev2 * pprob, rev3 = rev3 * pprob),
-                      by = c("household_code", "brand_descr", "week_end")]
+                  by = c("household_code", "brand_descr", "week_end")]
   return(hh_agg)
 }
 invisible(clusterEvalQ(cl, load('Data/Machine-Adoption/MU-Diff-Asist.RData')))
 clusterExport(cl, c('pref', 'xvars', 'hhRevFun'))
 hh_br_rev = parLapply(cl, hh_codes, hhRevFun)
 hh_br_rev = rbindlist(hh_br_rev)
-save(hh_br_rev, file = paste(output_dir, "/HH-Rev-Panel.RData", sep=""))
+save(hh_br_rev, file = paste(output_dir, "/HH-Rev-No-Variety-Panel.RData", sep=""))
