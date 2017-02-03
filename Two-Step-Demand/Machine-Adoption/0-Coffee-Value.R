@@ -199,7 +199,8 @@ setkey(hh_trip_prob, household_code, dma_code, quarter, retailer_code)
 retailer_panel = retailer_panel[week_end>="2007-01-01", ]
 setkey(retailer_panel, dma_code, quarter, retailer_code, week_end)
 gc()
-save(hh_trip_prob, retailer_panel, hh_panel, pref, file = "Data/Machine-Adoption/MU-Diff-Asist.RData")
+save(hh_trip_prob, retailer_panel, hh_panel, pref, bhatd, hh_codes, 
+     file = "Data/Machine-Adoption/MU-Diff-Asist.RData")
 
 # Compute the adoption value consumer by consumer
 xvars = c(paste0("a", 2:15), "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
@@ -307,8 +308,8 @@ save(hw_market_panel, file = paste(output_dir, "/HW-MU-Panel.RData", sep=""))
 hw_market_panel[, `:=`(ntrip =.GRP), by = c("household_code", "week_end")]
 setkey(hw_market_panel, ntrip)
 write.csv(hw_market_panel[,.(household_code, hware, ntrip, t, price, price_avg, price_avgn,
-                             mu_diff, purchased, ashare, thanksgiving, christmas, 
-                             bchristmas, achristmas, mother, father, nbrand)],
+                             mu_diff, purchased, thanksgiving, christmas, 
+                             bchristmas, achristmas, mother, father, ashare, nbrand)],
           file = "Data/Machine-Adoption/HW-MU-Panel.csv", row.names = FALSE)
 
 # Estimate the parameter governing the evolution process of mu_diff

@@ -604,9 +604,13 @@ setkeyv(hw_panel, c("household_code", "dma_code", "week_end",  "panel_year", "qu
 setkeyv(hw_p_index, c("household_code", "dma_code", "week_end", "panel_year", "quarter"))
 hw_panel = hw_panel[hw_p_index, nomatch=0L]
 
-# Flag Adoption date
+# Setkey and save the data
 setkey(hw_panel, week_end)
 hw_panel[, t:=.GRP, by = "week_end"]
+setkey(hw_panel, household_code, week_end)
+save(hw_panel, file = paste(output_dir, "/HW-Full-Panel.RData", sep=""))
+
+# Flag Adoption date
 hw_panel = hw_panel[wfilter==1, ]
 hw_panel[!is.na(imputed_hfirst), purchased:=as.integer(t==max(t)), by = c("household_code")]
 hw_panel[is.na(purchased), purchased:=0]

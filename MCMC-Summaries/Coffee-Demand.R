@@ -193,13 +193,47 @@ pdf(file=paste(graph_dir, "/figs/SatiationDensity.pdf", sep=""), width=8, height
 ggplot(dat, aes(x=grid_points, y=den1, group=Parameter, colour=Parameter))+geom_line()+
   geom_ribbon(data=dat,aes(ymin=den0,ymax=den2, fill=Parameter), alpha=0.3)+theme_bw()+
   xlab("Parameter Value") + ylab("Density")+theme(legend.position=c(0.1,0.9))+
-  scale_y_continuous(breaks=seq(0, 50, 5))+scale_x_continuous(breaks=seq(0.7, 1, 0.05))
+  scale_y_continuous(breaks=seq(0, 80, 10))+scale_x_continuous(breaks=seq(0.7, 1, 0.05))
 dev.off()
 
 pdf(file=paste(graph_dir, "/figs/SatiationScatter.pdf", sep=""), width=8, height=5)
 qplot(exp(bhatd[d_ind, ksa_ind])/(1+exp(bhatd[d_ind, ksa_ind])), 
       exp(bhatd[d_ind, gsa_ind])/(1+exp(bhatd[d_ind, gsa_ind])), xlab = "KCup", 
       ylab = "Ground Coffee State Dependence") + theme_bw()
+dev.off()
+
+#----------------------------------------------------------------------------------------------------#
+# Plot the posterior densities and credible intervals of lags
+kind = which(xnames=="keurig")-1
+
+# Create x grid (two grid need to have the same size)
+kgrid = seq(-4, 12, 0.02)
+ksize = length(kgrid)
+draws = dim(bhatd)[1] - burnin
+
+# Initialize dataset to store percentiles
+kd_mat = matrix(rep(0, ksize*draws), nrow=draws)
+for (d in 1:draws){
+  kd_mat[d, ] = dnorm(kgrid, mean = bhatd[(d+burnin), kind], 
+                      sd = sqrt(sigd[kind, kind, (d+burnin)]))
+}
+
+# Obtain the percentiles in grid 
+k_pct = matrix(rep(0, ksize*3), nrow=ksize)
+for (k in 1:ksize){
+  k_pct[k, ] = quantile(kd_mat[,k], c(0.025, 0.50, 0.975))
+}
+rm(kd_mat)
+gc()
+
+# Create the dataset for graphs
+dat = data.table(grid_points=kgrid, den0=k_pct[,1], den1=k_pct[,2], 
+                  den2=k_pct[,3], Parameter = "Keurig")
+pdf(file=paste(graph_dir, "/figs/KeurigP.pdf", sep=""), width=8, height=5)
+ggplot(dat, aes(x=grid_points, y=den1, group=Parameter, colour=Parameter))+geom_line()+
+  geom_ribbon(data=dat,aes(ymin=den0,ymax=den2, fill=Parameter), alpha=0.3)+theme_bw()+
+  xlab("Parameter Value") + ylab("Density")+theme(legend.position=c(0.88,0.9))+geom_vline(xintercept = 0)+
+  scale_y_continuous(breaks=seq(0, 0.20, 0.025))+scale_x_continuous(breaks=seq(-4, 12, 2))
 dev.off()
 
 #----------------------------------------------------------------------------------------------------#

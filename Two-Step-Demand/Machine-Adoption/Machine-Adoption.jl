@@ -5,11 +5,12 @@
 # Setting for parallel computation
 remote = true;
 if remote
-  addprocs(32, restrict=false)
-  machines = [("bushgcn11", 32), ("bushgcn12", 32)]
+  addprocs(48, restrict=false)
+  # machines = [("bushgcn02", 20), ("bushgcn03", 20), ("bushgcn04", 20), ("bushgcn05", 20), ("bushgcn06", 20)]
+  machines = [("bushgcn13", 48)]
   addprocs(machines; tunnel=true)
 else
-  addprocs(32; restrict=false)
+  addprocs(16; restrict=false)
 end
 np = workers()
 remotecall_fetch(rand, 2, 20) # Test worker
@@ -26,7 +27,7 @@ broad_mpi(:(np = $np));
 
 # Computation Settings
 @everywhere controls = true; # Add controls such as seasonality
-@everywhere cons_av = true; # Constant adoption value
+@everywhere cons_av = false; # Constant adoption value
 
 # Load Packages
 using Distributions, Optim, FastGaussQuadrature, Calculus
@@ -102,7 +103,7 @@ end
 
 @everywhere purch_vec = convert(Array{Int64}, hh_panel[:, 9])
 @everywhere XMat = convert(Array{Float64}, hh_panel[:, [5, 6, 8]])
-@everywhere ZMat = hh_panel[:, 10:15]
+@everywhere ZMat = hh_panel[:, 10:16]
 @everywhere ZMat = sparse(convert(Array{Float64}, ZMat))
 @everywhere pbar_n2 =  ω * XMat[:,1] + (1-ω) * XMat[:,2];
 @everywhere SMat = transpose(hcat(ρ0 + ρ1 * pbar_n2, pbar_n2, α0 + α1 * XMat[:,3]))
@@ -117,27 +118,28 @@ end
 # MCMC Draws
 burnin = 0;
 thin   = 1;
-draws  = 20000;
+draws  = 40000;
 totdraws = draws*thin + burnin;
 npar = n_x - 1  + n_z;
 
 bhat = zeros(Float64, npar)
 sigb = eye(npar)*100
+sigb[1, 1] = sigb[1,1]*10
 
 # Propose a starting value
-@everywhere theta0 = [0.1, -0.1]
+@everywhere theta0 = [10., -1.]
 @everywhere kappa0 = zeros(Float64, n_z)
-sigs = 1/16*diagm([1.16908421, 0.008417977])
+sigs = diagm([1., 0.01])
 walkdistr = MvNormal(zeros(n_x-1), sigs);
-ksigs = 1/16*diagm([0.207363698, 0.043348353, 0.017985147, 0.019906671, 0.002250694, 0.088081925])
+ksigs = diagm([0.011, 0.0041, 0.0042, 0.0004, 0.14, 0.14, 0.04])
 kwalkdis = MvNormal(zeros(n_z), ksigs);
 
 pd = Uniform(minimum(XMat[:,1]), maximum(XMat[:,1]))
 pbard = Uniform(minimum(XMat[:,2]), maximum(XMat[:,2]))
 mud = Uniform(minimum(XMat[:,3]), maximum(XMat[:,3]))
 
-@everywhere sH = diagm([5^2, 5^2, 0.05^2]);
-@eval @everywhere H = 4 * $sigs
+@everywhere sH = diagm([5.^2, 5.^2, 0.05^2]);
+@eval @everywhere H = 16 * $sigs
 @everywhere N_0 = 1000
 thtild = theta0 .+ 10*rand(walkdistr, N_0);
 stild = zeros(Float64, n_x, N_0);
@@ -156,7 +158,6 @@ end
 broad_mpi(:(thtild = $thtild));
 broad_mpi(:(stild = $stild));
 broad_mpi(:(wtild = $wtild));
-
 
 # param distributions and pdfs
 tdist0 = MvNormal(theta0, H);
@@ -185,7 +186,7 @@ end
 # Compute the relevante vectors concerning theta0
 @sync broad_mpi(:(wts_old  = spdf * tpdf))
 @sync broad_mpi(:(ww_old = spdf * (tpdf .* wtild)))
-@sync broad_mpi(:(ex1_old = exp((theta0[1] + theta0[2] * XMat[:,1] + W1vec)/100 + ZMat*kappa0)))
+@sync broad_mpi(:(ex1_old = exp((theta0[1] + theta0[2] * XMat[:,1] + W1vec) + ZMat*kappa0)))
 
 # Initialize storage in other processes
 @sync broad_mpi(:(wts = Array(Float64, nobs)))
@@ -284,4 +285,4 @@ for d=1:totdraws
     println("Finished drawing $(d) out of $(totdraws)")
 end
 
-writedlm("Data/Bayes-MCMC/Adoption-Coef.csv", hcat(thatd, lld))
+writedlm("Data/Bayes-MCMC/Adoption-Coef-MU.csv", hcat(thatd, lld))
