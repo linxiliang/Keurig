@@ -54,12 +54,40 @@ for (c in ctype){
 }
 
 # Aggregate to get summary adoption by date
+hh_sum = as.list(1:(c*m))
+k = 0
+maxt = max(hw_panel[, t])
 for (c in ctype){
   for (m in mtype){
+    k = k+1
     kvar = paste0("c",c,"m",m)
-    
+    setnames(hw_panel, kvar, "pvar")
+    hw_panel[, prob:=as.numeric(NA)]
+    for (it in 1:313){
+      hw_panel[t<=it, prb_temp := prod(pvar), by = c("household_code")]
+      hw_panel[t==it, prob := prb_temp]
+    }
+    hw_panel[, `:=`(ct = c, mt = m)]
+    hh_sum[[k]] = hw_panel[, .(prob = mean(prob)), by = c("t", "ct", "mt")]
+    setnames(hw_panel, "pvar", kvar)
   }
 }
+#---------------------------------------------------------------------------------------------------#
 
-#
+#---------------------------------------------------------------------------------------------------#
+# Given adoption probability 
+for (c in ctype){
+  if (c==1){
+    filename = paste(output_dir, "/HH-Rev-Panel.RData", sep="")
+  } else if (c==2) {
+    filename = paste(output_dir, "/HH-Rev-Homo-Panel.RData", sep="")
+  } else{
+    filename = paste(output_dir, "/HH-Rev-No-Variety-Panel.RData", sep="")
+  }
+  load(filename)
+  for (m in mtype){
+    vname = paste()
+
+  }
+}
 

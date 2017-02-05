@@ -63,7 +63,7 @@
  end
 
  function W0V(θ1::Vector, x::Vector, w::Float64)
-     return 10*log(exp(β*w/10) + exp((θ1[1] + θ1[2] * x[1] + coefun(W1coef, x[3]))/10))
+     return 30*log(exp(β*w/30) + exp((θ1[1] + θ1[2] * x[1] + coefun(W1coef, x[3]))/30))
  end
 
  # Compute the value of holding the machine for given state
@@ -98,9 +98,9 @@ function vupdate!()
 
    # Update expoential value of adoption for new theta
    if controls
-     ex1_new[:] = exp((theta1[1] + theta1[2] * XMat[:,1] + W1vec)/10 + ZMat*kappa1)
+     ex1_new[:] = (theta1[1] + theta1[2] * XMat[:,1] + W1vec)/30 + ZMat*kappa1
    else
-     ex1_new[:] = exp((theta1[1] + theta1[2] * XMat[:,1] + W1vec)/10)
+     ex1_new[:] = (theta1[1] + theta1[2] * XMat[:,1] + W1vec)/30
    end
 end
 
@@ -110,12 +110,14 @@ function ll_fun()
      Wa_new = ww./wts;
 
      # Compute exponential of value of not adopting
-     ex0_old = exp(β * Wa_old/10)
-     ex0_new = exp(β * Wa_new/10)
+     ex0_old = β * Wa_old/30
+     ex0_new = β * Wa_new/30
 
      # Compute the probability of waiting
-     pval_old = ex0_old./(ex0_old+ex1_old)
-     pval_new = ex0_new./(ex0_new+ex1_new)
+     Em_old = mean(vcat(ex0_old, ex1_old))
+     Em_new = mean(vcat(ex0_new, ex1_new))
+     pval_old = exp(ex0_old - Em_old)./(exp(ex0_old - Em_old)+exp(ex1_old - Em_old))
+     pval_new = exp(ex0_new - Em_new)./(exp(ex0_new - Em_new)+exp(ex1_new - Em_new))
 
      # Compute likelihood for old and new
      ll_old = sum(log(1-pval_old).*purch_vec + log(pval_old).*(1-purch_vec))

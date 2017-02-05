@@ -127,7 +127,7 @@ sigb = eye(npar)*10
 sigb[1, 1] = sigb[1,1]*100
 
 # Propose a starting value
-@everywhere theta0 = [0.1, -0.1]
+@everywhere theta0 = [-0.1, -0.2]
 @everywhere kappa0 = zeros(Float64, n_z)
 sigs = diagm([1., 0.01])
 walkdistr = MvNormal(zeros(n_x-1), sigs);
@@ -141,12 +141,12 @@ mud = Uniform(minimum(XMat[:,3]), maximum(XMat[:,3]))
 @everywhere sH = diagm([5.^2, 5.^2, 0.05^2]);
 @eval @everywhere H = 16 * $sigs
 @everywhere N_0 = 1000
-thtild = theta0 .+ 10*rand(walkdistr, N_0);
+thtild = theta0 .+ 30*rand(walkdistr, N_0);
 stild = zeros(Float64, n_x, N_0);
 wtild = zeros(Float64, N_0);
 for k in 1:N_0
     for i in 1:N_0
-        thtild[:,i] = theta0 + 10*rand(walkdistr)
+        thtild[:,i] = theta0 + 30*rand(walkdistr)
         stild[:,i] = [rand(pd), rand(pbard), rand(mud)]
         pbar_n2 = ω*stild[1, i] + (1-ω)*stild[2, i]
         stemp = [ρ0 + ρ1*pbar_n2, pbar_n2, α0 + α1*stild[3, i]]
@@ -186,7 +186,7 @@ end
 # Compute the relevante vectors concerning theta0
 @sync broad_mpi(:(wts_old  = spdf * tpdf))
 @sync broad_mpi(:(ww_old = spdf * (tpdf .* wtild)))
-@sync broad_mpi(:(ex1_old = exp((theta0[1] + theta0[2] * XMat[:,1] + W1vec) + ZMat*kappa0)))
+@sync broad_mpi(:(ex1_old = (theta0[1] + theta0[2] * XMat[:,1] + W1vec)/10 + ZMat*kappa0))
 
 # Initialize storage in other processes
 @sync broad_mpi(:(wts = Array(Float64, nobs)))

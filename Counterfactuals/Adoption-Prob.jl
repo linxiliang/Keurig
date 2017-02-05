@@ -21,7 +21,7 @@ mtype = 1
 # Mean estimates of coefficients
 burnin = 15000
 coef_mcmc = readdlm("Data/Bayes-MCMC/Adoption-Coef-With-MU-Wide.csv");
-theta = [20., -0.8]
+theta = [0.1, -0.1]
 kappa = mean(coef_mcmc[(burnin+1):end, 3:(end-1)], 1)[1,:]
 
 # Parameter settings
@@ -149,21 +149,22 @@ while (err > tol)
     nx = nx+1;
     approxW = (xpdfm' * wtild)./(sum(xpdfm, 1)[1,:])
     wnext = (spdfm' * wtild)./(sum(spdfm, 1)[1,:])
-    wtild1 = 10*log(exp(β * wnext/10) + exp(EW1x/10))
+    wtild1 = 30*log(exp(β * wnext/30) + exp(EW1x/30))
     err = sum(abs(wtild1-wtild))
     wtild[:] = wtild1
     println("Error is $(err), and interation is $(nx)")
 end
 
 # Compute the adoption probability
-probv = zeros(Float64, nobs)
+probv = zeros(Float64, 100)
 zb = ZMat*kappa
-for i in 1:nobs
+for i in 1:100
   s_dist = MvNormal(SMat[:,i], sH)
   sden = 10000*pdf(s_dist, xtild)
   wnext = ((sden' * wtild)/sum(sden))[1]
   EW1= theta[1] + theta[2] * XMat[i, 1] + coefun(W1coef, XMat[i, 3])
-  probv[i] = exp(β * wnext/10)/(exp(β * wnext/10) + exp(EW1/10 + zb[i]))
+  Em = mean(vcat(β * wnext/30, EW1/30 + zb[i]))
+  probv[i] = exp(β * wnext/30 - Em)/(exp(β * wnext/30 - Em) + exp(EW1/30 + zb[i]-Em))
 end
 fname = string("Data/Counterfactual/Prob_type_",ctype,"_mu_",mtype,".csv")
-writedlm(fname, hcat(hh_key, probv), ',')
+#writedlm(fname, hcat(hh_key, probv), ',')
