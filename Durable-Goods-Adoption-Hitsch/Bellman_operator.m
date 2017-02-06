@@ -29,7 +29,7 @@ if model_w.method_code == 1
 		v		= [utility; param.beta*Ew];		% Choice-specific values
 		max_v	= max(v);						% Subtract max of v to avoid exp(v) == InF
 												% (infinity) problem
-		
+        disp(v);		
 		Tw(i) = log(sum(exp(v - max_v))) + max_v;
 	end
 	

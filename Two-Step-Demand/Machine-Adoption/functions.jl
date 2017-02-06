@@ -63,7 +63,7 @@
  end
 
  function W0V(θ1::Vector, x::Vector, w::Float64)
-     return 30*log(exp(β*w/30) + exp((θ1[1] + θ1[2] * x[1] + coefun(W1coef, x[3]))/30))
+     return log(exp(β*w) + exp(θ1[1] + θ1[2] * x[1] + θ1[3]*coefun(W1coef, x[3])))
  end
 
  # Compute the value of holding the machine for given state
@@ -98,9 +98,9 @@ function vupdate!()
 
    # Update expoential value of adoption for new theta
    if controls
-     ex1_new[:] = (theta1[1] + theta1[2] * XMat[:,1] + W1vec)/30 + ZMat*kappa1
+     w1_new[:] = theta1[1] + theta1[2] * XMat[:,1] + theta1[3] * W1vec + ZMat*kappa1
    else
-     ex1_new[:] = (theta1[1] + theta1[2] * XMat[:,1] + W1vec)/30
+     w1_new[:] = theta1[1] + theta1[2] * XMat[:,1] + theta1[3] * W1vec
    end
 end
 
@@ -110,18 +110,18 @@ function ll_fun()
      Wa_new = ww./wts;
 
      # Compute exponential of value of not adopting
-     ex0_old = β * Wa_old/30
-     ex0_new = β * Wa_new/30
+     w0_old = β * Wa_old
+     w0_new = β * Wa_new
 
      # Compute the probability of waiting
-     Em_old = mean(vcat(ex0_old, ex1_old))
-     Em_new = mean(vcat(ex0_new, ex1_new))
-     pval_old = exp(ex0_old - Em_old)./(exp(ex0_old - Em_old)+exp(ex1_old - Em_old))
-     pval_new = exp(ex0_new - Em_new)./(exp(ex0_new - Em_new)+exp(ex1_new - Em_new))
+     Em_old = maximum(vcat(w0_old, w1_old))
+     Em_new = maximum(vcat(w0_new, w1_new))
+     pval_old = exp(w1_old - Em_old)./(exp(w0_old - Em_old)+exp(w1_old - Em_old))
+     pval_new = exp(w1_new - Em_new)./(exp(w0_new - Em_new)+exp(w1_new - Em_new))
 
      # Compute likelihood for old and new
-     ll_old = sum(log(1-pval_old).*purch_vec + log(pval_old).*(1-purch_vec))
-     ll_new = sum(log(1-pval_new).*purch_vec + log(pval_new).*(1-purch_vec))
+     ll_old = sum(log(pval_old).*purch_vec + log(1-pval_old).*(1-purch_vec))
+     ll_new = sum(log(pval_new).*purch_vec + log(1-pval_new).*(1-purch_vec))
 
      return hcat(ll_old, ll_new)
  end
@@ -129,7 +129,7 @@ function ll_fun()
  # Update only if accepted
 function supdate!()
      tpdf[:] = tpdf1;
-     ex1_old[:] = ex1_new;
+     w1_old[:] = w1_new;
      wts_old[:] = wts;
      ww_old[:] = ww;
  end

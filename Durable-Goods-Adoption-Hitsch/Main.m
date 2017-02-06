@@ -106,7 +106,6 @@ w_interp_graph	= transfer_representation(w_interp_solution, graph_w);
 w_cheb_graph	= transfer_representation(w_cheb_solution,   graph_w);
 
 
-
 %	Display output ------------------------------------------------------------
 figure(1);
 cm = (0.75:0.01:1)';

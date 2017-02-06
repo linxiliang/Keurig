@@ -21,7 +21,7 @@ mtype = 1
 # Mean estimates of coefficients
 burnin = 15000
 coef_mcmc = readdlm("Data/Bayes-MCMC/Adoption-Coef-With-MU-Wide.csv");
-theta = [0.1, -0.1]
+theta = [10, -0.1, 0.30]
 kappa = mean(coef_mcmc[(burnin+1):end, 3:(end-1)], 1)[1,:]
 
 # Parameter settings
@@ -116,7 +116,7 @@ pd = Uniform(minimum(XMat[:,1]), maximum(XMat[:,1]))
 pbard = Uniform(minimum(XMat[:,2]), maximum(XMat[:,2]))
 mud = Uniform(minimum(XMat[:,3]), maximum(XMat[:,3]))
 
-sH = diagm([5^2, 5^2, 0.03^2]);
+sH = diagm([σ1^2, 5^2, σ0^2]);
 N_0 = 5000
 xtild = zeros(Float64, n_x, N_0);
 stild = zeros(Float64, n_x, N_0);
@@ -139,7 +139,7 @@ end
 # Value if adopting
 EW1x = zeros(Float64, N_0);
 for i in 1:N_0
-  EW1x[i] = theta[1] + theta[2] * xtild[1, i] + coefun(W1coef, xtild[3, i])
+  EW1x[i] = theta[1] + theta[2] * xtild[1, i] + theta[3] * coefun(W1coef, xtild[3, i])
 end
 
 tol = 1e-8
@@ -147,24 +147,26 @@ err = 1;
 nx = 0;
 while (err > tol)
     nx = nx+1;
-    approxW = (xpdfm' * wtild)./(sum(xpdfm, 1)[1,:])
+    EWmax = maximum(vcat(EW1x, wtild))
     wnext = (spdfm' * wtild)./(sum(spdfm, 1)[1,:])
-    wtild1 = 30*log(exp(β * wnext/30) + exp(EW1x/30))
-    err = sum(abs(wtild1-wtild))
-    wtild[:] = wtild1
+    wgrid = log(exp(β * wnext - EWmax) + exp(EW1x - EWmax)) + EWmax
+    err = sum(abs(wgrid-wtild))
+    wtild[:] = wgrid
     println("Error is $(err), and interation is $(nx)")
 end
 
 # Compute the adoption probability
 probv = zeros(Float64, 100)
 zb = ZMat*kappa
+EWmax = maximum(vcat(EW1x, wtild))
+ENext = β*(log(exp(EW1x-EWmax)+exp(wtild-EWmax))+EWmax)
 for i in 1:100
   s_dist = MvNormal(SMat[:,i], sH)
   sden = 10000*pdf(s_dist, xtild)
-  wnext = ((sden' * wtild)/sum(sden))[1]
-  EW1= theta[1] + theta[2] * XMat[i, 1] + coefun(W1coef, XMat[i, 3])
-  Em = mean(vcat(β * wnext/30, EW1/30 + zb[i]))
-  probv[i] = exp(β * wnext/30 - Em)/(exp(β * wnext/30 - Em) + exp(EW1/30 + zb[i]-Em))
+  wnext = ((sden' * ENext)/sum(sden))[1]
+  EW1= theta[1] + theta[2] * XMat[i, 1] + theta[3]*coefun(W1coef, XMat[i, 3])
+  Em = maximum([EW1, wnext])
+  probv[i] = exp(EW1-Em)/(exp(EW1-Em) + exp(wnext-Em))
 end
 fname = string("Data/Counterfactual/Prob_type_",ctype,"_mu_",mtype,".csv")
 #writedlm(fname, hcat(hh_key, probv), ',')

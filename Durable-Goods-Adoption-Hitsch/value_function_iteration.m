@@ -31,6 +31,7 @@ while norm >= settings.tol && iteration <= settings.iter_max
 	else
 		theta = w.theta;					% Chebyshev approximation case
 		w = calculate_Chebyshev_coefficients_2D(Tw,w);
+        disp(w.theta);
 		norm = max(max(abs(w.theta - theta)));
 	end
 

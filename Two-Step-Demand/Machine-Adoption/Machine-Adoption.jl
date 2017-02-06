@@ -5,12 +5,12 @@
 # Setting for parallel computation
 remote = true;
 if remote
-  addprocs(48, restrict=false)
-  # machines = [("bushgcn02", 20), ("bushgcn03", 20), ("bushgcn04", 20), ("bushgcn05", 20), ("bushgcn06", 20)]
-  machines = [("bushgcn13", 48)]
+  addprocs(20, restrict=false)
+  machines = [("bushgcn02", 20), ("bushgcn03", 20), ("bushgcn04", 20), ("bushgcn05", 20), ("bushgcn06", 20)]
+  # machines = [("bushgcn13", 48)]
   addprocs(machines; tunnel=true)
 else
-  addprocs(16; restrict=false)
+  addprocs(4; restrict=false)
 end
 np = workers()
 remotecall_fetch(rand, 2, 20) # Test worker
@@ -120,41 +120,70 @@ burnin = 0;
 thin   = 1;
 draws  = 40000;
 totdraws = draws*thin + burnin;
-npar = n_x - 1  + n_z;
+npar = n_x + n_z;
 
 bhat = zeros(Float64, npar)
-sigb = eye(npar)*10
-sigb[1, 1] = sigb[1,1]*100
+sigb = eye(npar)*100
 
 # Propose a starting value
-@everywhere theta0 = [-0.1, -0.2]
+@everywhere theta0 = [-0.1, -0.3, 0.1]
 @everywhere kappa0 = zeros(Float64, n_z)
-sigs = diagm([1., 0.01])
-walkdistr = MvNormal(zeros(n_x-1), sigs);
-ksigs = diagm([0.011, 0.0041, 0.0042, 0.0004, 0.14, 0.14, 0.04])
+sigs = diagm([0.01, 0.001, 0.001])
+walkdistr = MvNormal(zeros(n_x), sigs);
+ksigs = diagm([0.001, 0.0041, 0.0042, 0.0004, 0.001, 0.001, 0.001])
 kwalkdis = MvNormal(zeros(n_z), ksigs);
 
 pd = Uniform(minimum(XMat[:,1]), maximum(XMat[:,1]))
 pbard = Uniform(minimum(XMat[:,2]), maximum(XMat[:,2]))
 mud = Uniform(minimum(XMat[:,3]), maximum(XMat[:,3]))
 
-@everywhere sH = diagm([5.^2, 5.^2, 0.05^2]);
-@eval @everywhere H = 16 * $sigs
-@everywhere N_0 = 1000
-thtild = theta0 .+ 30*rand(walkdistr, N_0);
+@everywhere sH = diagm([σ1^2, 5.^2, σ0^2]);
+@eval @everywhere H = 4 * $sigs
+@everywhere N_0 = 2000
+thtild = theta0 .+ 10*rand(walkdistr, N_0);
+xtild = zeros(Float64, n_x, N_0);
 stild = zeros(Float64, n_x, N_0);
-wtild = zeros(Float64, N_0);
-for k in 1:N_0
-    for i in 1:N_0
-        thtild[:,i] = theta0 + 30*rand(walkdistr)
-        stild[:,i] = [rand(pd), rand(pbard), rand(mud)]
-        pbar_n2 = ω*stild[1, i] + (1-ω)*stild[2, i]
-        stemp = [ρ0 + ρ1*pbar_n2, pbar_n2, α0 + α1*stild[3, i]]
-        wtild[i] = WApprox(thtild[:,i], thtild, H, stemp, stild, sH, wtild)
-        wtild[i] = W0V(thtild[:,i], stild[:,i], wtild[i])
-    end
-    #println("Value is supposed to be $(wtild[i])")
+wtild = ones(Float64, N_0);
+for i in 1:N_0
+  xtild[:,i] = [rand(pd), rand(pbard), rand(mud)]
+  pbar_n2 = ω*xtild[1, i] + (1-ω)*xtild[2, i]
+  stild[:,i] = [ρ0 + ρ1*pbar_n2, pbar_n2, α0 + α1*xtild[3, i]]
 end
+
+tpdfm = zeros(Float64, N_0, N_0);
+spdfm = zeros(Float64, N_0, N_0);
+for i in 1:N_0
+  t_dist = MvNormal(thtild[:,i], H)
+  tpdfm[i, :] = pdf(t_dist, thtild)
+  s_dist = MvNormal(stild[:,i], sH)
+  spdfm[i, :] = pdf(s_dist, xtild)
+end
+
+# Value if adopting
+EW1x = zeros(Float64,N_0);
+for i in 1:N_0
+  EW1x[i] = coefun(W1coef, xtild[3, i])
+end
+
+tol = 1e-6
+err = 1;
+nx = 0;
+while (err > tol)
+    nx = nx+1;
+    # Now approximate the next period W
+    wnext = ((spdfm.*tpdfm)' * wtild)./(sum((spdfm.*tpdfm), 1)[1,:])
+
+    # Obtain the Value for adopting
+    EW1 = thtild[1,:] + thtild[2, :] .* xtild[1, :] + thtild[3,:].*EW1x
+
+    # Compute the Bellman
+    EWmax = maximum(vcat(EW1x, β*wnext))
+    wgrid = log(exp(β*wnext-EWmax).+exp(EW1-EWmax))+EWmax
+    err = sum(abs(wgrid-wtild))
+    wtild[:] = wgrid
+    println("Error is $(err), and interation is $(nx)")
+end
+
 broad_mpi(:(thtild = $thtild));
 broad_mpi(:(stild = $stild));
 broad_mpi(:(wtild = $wtild));
@@ -184,14 +213,14 @@ end
 @sync broad_mpi(:(sden!()))
 
 # Compute the relevante vectors concerning theta0
-@sync broad_mpi(:(wts_old  = spdf * tpdf))
-@sync broad_mpi(:(ww_old = spdf * (tpdf .* wtild)))
-@sync broad_mpi(:(ex1_old = (theta0[1] + theta0[2] * XMat[:,1] + W1vec)/10 + ZMat*kappa0))
+@sync broad_mpi(:(wts_old  = spdf * tpdf));
+@sync broad_mpi(:(ww_old = spdf * (tpdf .* wtild)));
+@sync broad_mpi(:(w1_old = theta0[1] + theta0[2] * XMat[:,1] + theta0[3]*W1vec + ZMat*kappa0));
 
 # Initialize storage in other processes
 @sync broad_mpi(:(wts = Array(Float64, nobs)))
 @sync broad_mpi(:(ww = Array(Float64, nobs)))
-@sync broad_mpi(:(ex1_new = Array(Float64, nobs)))
+@sync broad_mpi(:(w1_new = Array(Float64, nobs)))
 
 # Initialize MCMC storage
 thatd = zeros(Float64, draws, npar);
