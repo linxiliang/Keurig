@@ -3,13 +3,12 @@
 # Jan 2017
 
 # Setting for parallel computation
-test_run = false;
-remote = true;
+remote = false;
 if remote
   addprocs(48, restrict=false)
   # machines = [("bushgcn02", 20), ("bushgcn03", 20), ("bushgcn04", 20), ("bushgcn05", 20), ("bushgcn06", 20)]
-  machines = [("bushgcn13", 48)]
-  # machines = [("bushgcn11", 48), ("bushgcn12", 48)]
+  # machines = [("bushgcn13", 48)]
+  machines = [("bushgcn11", 48), ("bushgcn12", 48)]
   addprocs(machines; tunnel=true)
 else
   addprocs(4; restrict=false)
@@ -28,7 +27,7 @@ broad_mpi(:(np = $np));
 @everywhere cd("$(homedir())/Keurig");
 
 # Computation Settings
-@everywhere controls = false; # Add controls such as seasonality
+@everywhere controls = true; # Add controls such as seasonality
 @everywhere cons_av = false; # Constant adoption value
 
 # Load Packages
@@ -89,9 +88,7 @@ for i in 1:size(hh_panel, 1)
   end
 end
 hh_panel = hh_panel[None_NA_list, :];
-if test_run
-  hh_panel = hh_panel[1:100000, :];
-end
+#hh_panel = hh_panel[1:100000, :];
 (nr, nc) = size(hh_panel)
 chunk_size = ceil(Int, nr/length(np))
 @sync begin
@@ -126,13 +123,8 @@ draws  = 40000;
 totdraws = draws*thin + burnin;
 npar = n_x + n_z;
 
-if controls
-  bhat = zeros(Float64, npar)
-  sigb = eye(npar)*100
-else
-  bhat = zeros(Float64, n_x)
-  sigb = eye(n_x)*100
-end
+bhat = zeros(Float64, npar)
+sigb = eye(npar)*100
 
 # Propose a starting value
 @everywhere theta0 = [-0.1, -0.3, 0.1]
@@ -169,25 +161,23 @@ for i in 1:N_0
 end
 
 # Value if adopting
-EW1x = zeros(Float64,N_0);
+EW1x = zeros(Float64,N_0,N_0);
 for i in 1:N_0
-  EW1x[i] = coefun(W1coef, xtild[3, i])
+  for j in 1:N_0
+    EW1x[i,j] = thtild[1,i] + thtild[2,i]*xtild[1,j] + thtild[3,i]*coefun(W1coef, xtild[3, j])
+  end
 end
 
+# Not converging! Probably due to approximation
 tol = 1e-6
 err = 1;
 nx = 0;
 while (err > tol)
     nx = nx+1;
     # Now approximate the next period W
-    wnext = ((spdfm.*tpdfm) * wtild)./(sum((spdfm.*tpdfm), 2)[:,1])
-
-    # Obtain the Value for adopting
-    EW1 = thtild[1,:] + thtild[2, :] .* xtild[1, :] + thtild[3,:].*EW1x
-
-    # Compute the Bellman
-    EWmax = maximum(vcat(EW1x, β*wnext))
-    wgrid = log(exp(β*wnext-EWmax).+exp(EW1-EWmax))+EWmax
+    EMv = maximum(EW1x.+(wtild'))
+    W0Mat = β*log(exp(EW1x-EMv).+exp(wtild'-EMv))+EMv
+    wgrid = (sum((spdfm.*tpdfm) .* W0Mat, 2)[:,1])./(sum((spdfm.*tpdfm), 2)[:,1])
     err = sum(abs(wgrid-wtild))
     wtild[:] = wgrid
     println("Error is $(err), and interation is $(nx)")
@@ -232,11 +222,7 @@ end
 @sync broad_mpi(:(w1_new = Array(Float64, nobs)))
 
 # Initialize MCMC storage
-if controls
-  thatd = zeros(Float64, draws, npar);
-else
-  thatd = zeros(Float64, draws, n_x);
-end
+thatd = zeros(Float64, draws, npar);
 lld = zeros(Float64, draws);
 start_time = time_ns();
 for d=1:totdraws
@@ -322,13 +308,8 @@ for d=1:totdraws
 
     # Indicate the progress
     elapsed_t = time_ns() - start_time;
-    if controls
-      println(vcat(theta0, kappa0))
-      println(vcat(theta1, kappa1))
-    else
-      println(theta0)
-      println(theta1)
-    end
+    println(vcat(theta0, kappa0))
+    println(vcat(theta1, kappa1))
     @printf("%10.6f seconds has passed\n", elapsed_t/1e9)
     println("Finished drawing $(d) out of $(totdraws)")
 end

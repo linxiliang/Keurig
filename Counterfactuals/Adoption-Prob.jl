@@ -4,6 +4,10 @@
 
 #Set Directory
 cd("$(homedir())/Keurig");
+srand(12345678)
+
+# Trial Run
+test_run = false
 
 # Computation Settings
 controls = true; # Add controls such as seasonality
@@ -14,31 +18,56 @@ using Distributions, FastGaussQuadrature, Calculus, Gadfly
 
 # Which Counterfactuals
 #Choice: 1. Original Household; 2. Homogeneous Household; 3. None variety seeking.
-ctype = 1
-#Which: Util type 1. Only GMCR; 2.
-mtype = 1
+ctype = 3
+#Which: Util type
+mtype = 3
 
 # Mean estimates of coefficients
 burnin = 15000
 coef_mcmc = readdlm("Data/Bayes-MCMC/Adoption-Coef-With-MU-Wide.csv");
-theta = [10, -0.1, 0.30]
+theta = [-8.25372,-0.0168313,0.132642]
 kappa = mean(coef_mcmc[(burnin+1):end, 3:(end-1)], 1)[1,:]
+kappa = [0.132107,0.229519,0.00715936,0.187882,-0.0208753,0.265022,0.00442787]
 
 # Parameter settings
 β  = 0.995;
-if ctype == 1
+if ctype == 1 && mtype == 1
   # δ' = α0 + α1⋅δ + ϵ, ϵ~N(0,σ0^2)
-  α0 = 0.0019029;
-  α1 = 0.9308280;
-  σ0 = 0.03114;
-elseif ctype == 2
-  α0 = 0.0018778;
-  α1 = 0.8963512;
-  σ0 = 0.03548;
-elseif ctype == 3
-  α0 = 0.0018778;
-  α1 = 0.8963512;
-  σ0 = 0.03548;
+  α0 = 0.005238;
+  α1 = 0.8965;
+  σ0 = 0.04361;
+elseif ctype == 1 && mtype == 2
+  α0 = 0.008242;
+  α1 = 0.9186;
+  σ0 = 0.0643;
+elseif ctype == 1 && mtype == 3
+  α0 = 0.006354;
+  α1 = 0.9022;
+  σ0 = 0.0643;
+elseif ctype == 2 && mtype == 1
+  α0 = 0.008839;
+  α1 = 0.8826;
+  σ0 = 0.04767;
+elseif ctype == 2 && mtype == 2
+  α0 = 0.0116;
+  α1 = 0.9176;
+  σ0 = 0.07049;
+elseif ctype == 2 && mtype == 3
+  α0 = 0.01052;
+  α1 = 0.8955;
+  σ0 = 0.05581;
+elseif ctype == 3 && mtype == 1
+  α0 = 0.005538;
+  α1 = 0.8977;
+  σ0 = 0.04553;
+elseif ctype == 3 && mtype == 2
+  α0 = 0.008626;
+  α1 = 0.9193;
+  σ0 = 0.06671;
+elseif ctype == 3 && mtype == 3
+  α0 = 0.006707;
+  α1 = 0.9032;
+  σ0 = 0.05178;
 else
   throw(DomainError())
 end
@@ -97,9 +126,12 @@ for i in 1:size(hh_panel, 1)
   end
 end
 hh_panel = hh_panel[None_NA_list, :];
+if test_run
+  hh_panel = hh_panel[1:100000, :]
+end
 hh_key = convert(Array{Int64}, hh_panel[:,[1,4]])
 XMat = convert(Array{Float64}, hh_panel[:, [5, 6, (7+mtype)]])
-ZMat = hh_panel[:, 11:16]
+ZMat = hh_panel[:, vcat(11:16, 4)]
 ZMat = sparse(convert(Array{Float64}, ZMat))
 pbar_n2 =  ω * XMat[:,1] + (1-ω) * XMat[:,2];
 SMat = transpose(hcat(ρ0 + ρ1 * pbar_n2, pbar_n2, α0 + α1 * XMat[:,3]))
@@ -131,9 +163,9 @@ xpdfm = zeros(Float64, N_0, N_0);
 spdfm = zeros(Float64, N_0, N_0);
 for i in 1:N_0
   x_dist = MvNormal(xtild[:,i], sH)
-  xpdfm[i, :] = 10000*pdf(x_dist, xtild)
+  xpdfm[i, :] = pdf(x_dist, xtild)
   s_dist = MvNormal(stild[:,i], sH)
-  spdfm[i, :] = 10000*pdf(s_dist, xtild)
+  spdfm[i, :] = pdf(s_dist, xtild)
 end
 
 # Value if adopting
@@ -142,13 +174,13 @@ for i in 1:N_0
   EW1x[i] = theta[1] + theta[2] * xtild[1, i] + theta[3] * coefun(W1coef, xtild[3, i])
 end
 
-tol = 1e-8
+tol = 1e-8;
 err = 1;
 nx = 0;
 while (err > tol)
     nx = nx+1;
     EWmax = maximum(vcat(EW1x, wtild))
-    wnext = (spdfm' * wtild)./(sum(spdfm, 1)[1,:])
+    wnext = (spdfm * wtild)./(sum(spdfm, 2)[:,1])
     wgrid = log(exp(β * wnext - EWmax) + exp(EW1x - EWmax)) + EWmax
     err = sum(abs(wgrid-wtild))
     wtild[:] = wgrid
@@ -156,17 +188,15 @@ while (err > tol)
 end
 
 # Compute the adoption probability
-probv = zeros(Float64, 100)
+probv = zeros(Float64, nobs)
 zb = ZMat*kappa
 EWmax = maximum(vcat(EW1x, wtild))
-ENext = β*(log(exp(EW1x-EWmax)+exp(wtild-EWmax))+EWmax)
-for i in 1:100
+for i in 1:nobs
   s_dist = MvNormal(SMat[:,i], sH)
-  sden = 10000*pdf(s_dist, xtild)
-  wnext = ((sden' * ENext)/sum(sden))[1]
+  sden = pdf(s_dist, xtild)
+  wnext = (sum(sden' * wtild)/sum(sden))
   EW1= theta[1] + theta[2] * XMat[i, 1] + theta[3]*coefun(W1coef, XMat[i, 3])
-  Em = maximum([EW1, wnext])
-  probv[i] = exp(EW1-Em)/(exp(EW1-Em) + exp(wnext-Em))
+  probv[i] =  exp(β * wnext - EWmax)/(exp(EW1-EWmax) + exp(β*wnext - EWmax))
 end
 fname = string("Data/Counterfactual/Prob_type_",ctype,"_mu_",mtype,".csv")
-#writedlm(fname, hcat(hh_key, probv), ',')
+writedlm(fname, hcat(hh_key, probv), ',')

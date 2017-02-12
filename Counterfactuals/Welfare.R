@@ -22,8 +22,8 @@ setwd("~/Keurig")
 meta_dir = "Data/Meta-Data/"
 input_dir = "Data/Bayes-MCMC/"
 data_input_dir = "Data/MLogit-Data/"
-graph_dir = "Tabfigs/MCMC-Summaries/"
-code_dir = "Scripts/MCMC-Summaries/"
+graph_dir = "Tabfigs/Counterfactuals/"
+code_dir = "Scripts/Counterfactuals/"
 # Set seed
 RNGkind("L'Ecuyer-CMRG")
 set.seed(12345)
@@ -111,6 +111,17 @@ clusterExport(cl, c('BC', 'EXPEND', 'eu', 'vfun', 'CVfun'))
 #------------------------------------------------------------------------------#
 # Load data
 load(paste(data_input_dir, "MDC-Cond-Purchase-Flavors.RData", sep=""))
+hh_market_prod[keurig==1&(!grepl("KEURIG", brand_descr_orig)), brd := paste(brand_descr_orig, "KEURIG")]
+hh_market_prod[keurig==0|grepl("KEURIG", brand_descr_orig), brd := brand_descr_orig]
+hh_market_prod[brand_descr_orig=="KEURIG", brd:="KEURIG KEURIG"]
+owned_brands = c("KEURIG KEURIG", "GREEN MOUNTAIN KEURIG")
+licensed_brands = c("CARIBOU KEURIG", "NEWMAN'S OWN ORGANICS KEURIG", "EIGHT O'CLOCK KEURIG")
+thirdp_brands = setdiff(unique(hh_market_prod[keurig==1, brd]), 
+                        c(owned_brands, licensed_brands))
+hh_market_prod[, `:=`(owned=as.integer(brd%in%owned_brands),
+                      licensed=as.integer(brd%in%licensed_brands),
+                      thirdp=as.integer(brd%in%thirdp_brands))]
+
 setkeyv(hh_market_prod, c("household_code", "t", "brand", "roast"))
 
 # Do the welfare analysis only for households on the platform
@@ -168,21 +179,50 @@ hhcv = function(){
   hh_market_prod[, `:=`(eps=-log(-log(runif(nr))))]
   hh_market_prod[, `:=`(EC=sum(total_price_paid)), by = c("household_code", "t")]
   hh_market_prod[,  uall := vfun(EC[1], alpha, zb, price, eps, 0), by = c("household_code", "t")]
-  return(hh_market_prod[keurig==0, .(cv_all = CVfun(alpha, zb, price, eps, uall[1])), 
-                        by = c("household_code", "t")])
+  temp1 = hh_market_prod[licensed==0&thirdp==0, .(cv_all = CVfun(alpha, zb, price, eps, uall[1])), 
+                         by = c("household_code", "t")]
+  temp1[, ktype := "GMCR Only"]
+  temp2 = hh_market_prod[licensed==0, .(cv_all = CVfun(alpha, zb, price, eps, uall[1])), 
+                         by = c("household_code", "t")]
+  temp2[, ktype := "GMCR+Third Party"]
+  temp3 = hh_market_prod[thirdp==0, .(cv_all = CVfun(alpha, zb, price, eps, uall[1])), 
+                         by = c("household_code", "t")]
+  temp3[, ktype := "GMCR+Licensed"]
+  return(rbindlist(list(temp1, temp2, temp3)))
 }
 clusterExport(cl, c('hhcv'))
 
 mc_draws = 1000
 hh_agg = hh_full[keurig==0, .(cval = 0), by = c("household_code", "t")]
+nht = nrow(hh_agg)
+hh_agg = rbindlist(list(hh_agg, hh_agg, hh_agg))
 for (i in 1:mc_draws){
   # Generate the type 1 EV draw
   hh_temp = clusterEvalQ(cl, hhcv())
   hh_temp = rbindlist(hh_temp)
+  if (i==1) hh_agg[, `:=`(household_code=hh_temp$"household_code", t=hh_temp$"t", Type=hh_temp$ktype)]
   hh_agg[, cval := cval + hh_temp$cv_all]
   cat("Draw", i, "Finished out of", mc_draws, ".\n\n")
 }
-
+hh_agg[, cval := cval/mc_draws]
+hh_agg = hh_agg[cval<=2000, ]
 # Stop Cluster
 stopCluster(cl)
-save(hh_agg, file = "~/Desktop/Welfare.RData")
+save(hh_agg, file = "~/Keurig/Data/Counterfactual/Welfare.RData")
+
+#------------------------------------------------------------------------------#
+# Plot the welfare analysis
+load("~/Keurig/Data/Counterfactual/Welfare.RData")
+hh_agg = hh_agg[, .(cval = sum(cval)), by = c("household_code", "Type")]
+hh_spent = hh_full[, .(total_price_paid = sum(total_price_paid)), by = "household_code"]
+setkey(hh_agg, household_code)
+setkey(hh_spent, household_code)
+hh_agg=hh_spent[hh_agg, nomatch=0L]
+hh_agg[, cv_percent := 100*cval/(total_price_paid)]
+
+# Plots
+setkey(hh_agg, Type)
+welgraph = ggplot(hh_agg[cv_percent<=5000, ], aes(x=cv_percent))+
+  geom_histogram(bins=70, aes(y = ..density..), fill = "skyblue")+
+  theme_bw()+labs(list(x="CV Percent"))+facet_grid(.~Type)
+ggsave(paste(graph_dir, "/figs/welfare_hist.pdf", sep=""), welgraph, width=10, height=4)

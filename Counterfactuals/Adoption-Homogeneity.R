@@ -217,8 +217,8 @@ setkey(hw_market_panel, household_code, week_end)
 hw_market_panel[, `:=`(ntrip =.GRP), by = c("household_code", "week_end")]
 setkey(hw_market_panel, ntrip)
 write.csv(hw_market_panel[,.(household_code, hware, ntrip, t, price, price_avg, price_avgn,
-                             mu_diff1, mu_diff2, mu_diff3, ashare, thanksgiving, christmas, 
-                             bchristmas, achristmas, mother, father, nbrand)],
+                             mu_diff1, mu_diff2, mu_diff3, thanksgiving, christmas, 
+                             bchristmas, achristmas, mother, father, ashare, nbrand)],
           file = paste(output_dir,"/Homo-MU-Panel.csv",sep=""), row.names = FALSE)
 
 
