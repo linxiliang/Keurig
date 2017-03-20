@@ -49,7 +49,7 @@ purchases[, N_machine_purchases := sum(ifelse(ptype=="KEURIG" & product_module_c
 #18739 Households are flagged to carry one of the single cup serving machines
 #4296 Households purchased the portion packs only once
 #864 Households purchased the machine, but never the coffee
-purchases[, ever_holder:=as.numeric(N_pack_purchases>=3)]
+purchases[, ever_holder:=as.numeric(N_pack_purchases>=2)]
 
 #Record the first date of purchasing Portion pack or machine
 purchases[, `:=`(first_date = as.Date(ifelse(ptype=="KEURIG", purchase_date, 
