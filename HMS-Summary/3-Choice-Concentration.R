@@ -5,7 +5,7 @@ load(paste(output_dir, "/HMS-Summary-Auxiliary.RData", sep=""))
 holders_year = unique(purchases[holder==TRUE, .(household_code, panel_year)])
 holders_year = holders_year[, .(n_hh=.N), by = .(panel_year)]
 setkeyv(holders_year, "panel_year")
-pdf(file=paste(graph_dir, "/figs/holders_by_year.pdf", sep=""), width=7, height=5)
+pdf(file=paste(graph_dir, "/figs/holders_by_year.pdf", sep=""), width=8, height=5)
 plot(holders_year[, panel_year], holders_year[, log10(n_hh)], type="o",
      xlab = "Year", ylab="Holders (log 10)")
 dev.off()
@@ -32,38 +32,37 @@ pbr_flavors=pbr_flavors[, .(topb=sum(ind1),
                         by = c("household_code", "ever_holder", "holder", "nb")]
 
 # HHI Before Adoption
-pdf(file=paste(graph_dir, "/figs/HMS-Flavor-HHI-BeforeAdoption.pdf", sep=""), width=8, height=5)
 pbr_flavors[,`:=`(Status = ifelse(ever_holder==0, 'Never Adopted', 'Before Adoption'))]
-ggplot(pbr_flavors[holder==0, .(hhi, Status)], aes(hhi, fill = Status)) + labs(x = "HHI") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=400, position = 'identity')+
-  theme(legend.justification=c(0,1), legend.position=c(0,1))
+pbr_flavors$Status <- factor(pbr_flavors$Status, levels = c("Before Adoption", "Never Adopted"))
+
+pdf(file=paste(graph_dir, "/figs/HMS-Flavor-HHI-BeforeAdoption.pdf", sep=""), width=8, height=5)
+ggplot(pbr_flavors[holder==0, .(hhi, Status)], aes(x=hhi))+
+  geom_histogram(alpha=1, center=200, aes(y = ..density..), binwidth=400, col="grey30", fill="skyblue")+
+  scale_x_continuous("HHI", limits = c(0, 10000)) + theme_minimal() + facet_wrap(~ Status)
 dev.off()
 
+pbr_flavors[,`:=`(Status = ifelse(holder==0, 'Before Adoption', 'After Adoption'))]
+pbr_flavors$Status <- factor(pbr_flavors$Status, levels = c("Before Adoption", "After Adoption"))
 pdf(file=paste(graph_dir, "/figs/HMS-Flavor-HHI-HH-BAfter.pdf", sep=""), width=8, height=5)
-pbr_flavors[,`:=`(Status = ifelse(holder==0, 'Before', 'After'))]
-ggplot(pbr_flavors[ever_holder==1, .(hhi, Status)], aes(hhi, fill = Status)) + labs(x = "HHI") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=400, position = 'identity')+
-  theme(legend.justification=c(0,1), legend.position=c(0,1))
+ggplot(pbr_flavors[ever_holder==1, .(hhi, Status)], aes(x=hhi))+
+  geom_histogram(alpha=1, center=200, aes(y = ..density..), binwidth=400, col="grey30", fill="skyblue")+
+  scale_x_continuous("HHI", limits = c(0, 10000)) + theme_minimal() + facet_wrap(~ Status)
 dev.off()
 
 # HHI Panel
 pbr_temp = copy(pbr_flavors)
-pbr_temp[, `:=`(Status = factor(ifelse(ever_holder==0, "Ground Purchases", 
-                                       "Before and After Adoption"),
-                                levels = c("Ground Purchases", "Before and After Adoption")),
-                Type = factor(ifelse(holder==0&ever_holder==0, "Never Adopted", 
-                                     ifelse(holder==0, "Before Adoption", "After Adoption")),
-                              levels = c("Never Adopted", "Before Adoption", "After Adoption")))]
-pbr_temp2=pbr_temp[ever_holder==1&holder==0, ]
-pbr_temp2[, Status := "Ground Purchases"]
-pbr_temp = rbindlist(list(pbr_temp, pbr_temp2))
+pbr_temp[, `:=`(Status = factor(ifelse(ever_holder==0, "Never Adopted", "Adopters"),
+                                levels = c("Never Adopted", "Adopters")),
+                Type = ifelse(holder==0, "Before Adoption", "After Adoption"))]
+pbr_temp[holder==0 & ever_holder==0, Type := ""]
+pbr_temp[, Type := factor(Type, levels = c("","Before Adoption", "After Adoption"))]
 
 pdf(file=paste(graph_dir, "/figs/HMS-Flavor-HHI-BAPanel.pdf", sep=""), width=8, height=5)
-ggplot(pbr_temp, aes(hhi, fill = Type)) + labs(x = "HHI") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=250, position = 'identity') +
-  theme(legend.justification=c(1,1), legend.position=c(1,1)) + facet_grid(~Status)
+ggplot(pbr_temp, aes(x=hhi))+scale_x_continuous("HHI", limits = c(0, 10000)) + theme_minimal() +
+  geom_histogram(alpha=1, center=200, aes(y = ..density..), binwidth=400, col="grey30", fill="skyblue")+
+  facet_wrap( ~ Status + Type)
 dev.off()
-rm(pbr_temp, pbr_temp2)
+rm(pbr_temp)
 
 # Concentration Ratio
 pbr_temp = pbr_flavors[ever_holder==1, .(household_code, holder, c1, c2, c3)]
@@ -73,14 +72,12 @@ pbr_temp[, `:=`(Status = factor(ifelse(holder==0, "Before Adoption", "After Adop
                                 levels=c("Before Adoption", "After Adoption")),
                 Type = toupper(variable))]
 
-pdf(file=paste(graph_dir, "/figs/HMS-Flavor-CR-BAdoption.pdf", sep=""), 
-    width=8, height=5)
-ggplot(pbr_temp, aes(Share, fill = Status)) + labs(x = "Expenditure Share") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=0.05, position = 'identity') +
-  theme(legend.justification=c(1,1), legend.position=c(1,1)) + facet_grid(~Type)
+pdf(file=paste(graph_dir, "/figs/HMS-Flavor-CR-BAdoption.pdf", sep=""), width=8, height=12)
+ggplot(pbr_temp, aes(x=Share))+ theme_minimal() +
+  geom_histogram(alpha=1, center=0.025, aes(y = ..density..), binwidth=0.05, col="grey30", fill="skyblue")+
+  scale_x_continuous("Expenditure Share", limits = c(0, 1)) + facet_grid(Type~Status)
 dev.off()
 rm(pbr_temp)
-
 
 # Same analysis as above for brands
 pbrands = purchases[product_module_code==1463]
@@ -104,39 +101,38 @@ pbrands=pbrands[, .(topb=sum(ind1),
                 by = c("household_code", "ever_holder", "holder", "nb")]
 
 # HHI Before Adoption
+pbrands[, Status := factor(ifelse(ever_holder==0, 'Never Adopted', 'Before Adoption'),
+                              levels = c("Never Adopted", "Before Adoption"))]
+
 pdf(file=paste(graph_dir, "/figs/HMS-HHI-BeforeAdoption.pdf", sep=""), width=8, height=5)
-pbrands[,`:=`(Status = ifelse(ever_holder==0, 'Never Adopted', 'Before Adoption'))]
-ggplot(pbrands[holder==0, .(hhi, Status)], aes(hhi, fill = Status)) + labs(x = "HHI") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=400, position = 'identity')+
-  theme(legend.justification=c(0,1), legend.position=c(0,1))
+ggplot(pbrands[holder==0, .(hhi, Status)], aes(x=hhi))+
+  geom_histogram(alpha=1, center=200, aes(y = ..density..), binwidth=400, col="grey30", fill="skyblue")+
+  scale_x_continuous("HHI", limits = c(0, 10000)) + theme_minimal() + facet_wrap(~ Status)
 dev.off()
 
 # HHI Before and After Adoption
+pbrands[,`:=`(Status = factor(ifelse(holder==0, 'Before Adoption', 'After Adoption'), 
+                              levels = c("Before Adoption", "After Adoption")))]
 pdf(file=paste(graph_dir, "/figs/HMS-HHI-HH-BAfter.pdf", sep=""), width=8, height=5)
-pbrands[,`:=`(Status = ifelse(holder==0, 'Before', 'After'))]
-ggplot(pbrands[ever_holder==1, .(hhi, Status)], aes(hhi, fill = Status)) + labs(x = "HHI") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=400, position = 'identity')+
-  theme(legend.justification=c(0,1), legend.position=c(0,1))
+ggplot(pbrands[ever_holder==1, .(hhi, Status)], aes(x=hhi))+
+  geom_histogram(alpha=1, center=200, aes(y = ..density..), binwidth=400, col="grey30", fill="skyblue")+
+  scale_x_continuous("HHI", limits = c(0, 10000)) + theme_minimal() + facet_wrap(~ Status)
 dev.off()
 
 # HHI Panel
 pbr_temp = copy(pbrands)
-pbr_temp[, `:=`(Status = factor(ifelse(ever_holder==0, "Ground Purchases", 
-                                       "Before and After Adoption"),
-                                levels = c("Ground Purchases", "Before and After Adoption")),
-                Type = factor(ifelse(holder==0&ever_holder==0, "Never Adopted", 
-                                     ifelse(holder==0, "Before Adoption", "After Adoption")),
-                              levels = c("Never Adopted", "Before Adoption", "After Adoption")))]
-pbr_temp2=pbr_temp[ever_holder==1&holder==0, ]
-pbr_temp2[, Status := "Ground Purchases"]
-pbr_temp = rbindlist(list(pbr_temp, pbr_temp2))
+pbr_temp[, `:=`(Status = factor(ifelse(ever_holder==0, "Never Adopted", "Adopters"),
+                                levels = c("Never Adopted", "Adopters")),
+                Type = ifelse(holder==0, "Before Adoption", "After Adoption"))]
+pbr_temp[holder==0 & ever_holder==0, Type := ""]
+pbr_temp[, Type := factor(Type, levels = c("","Before Adoption", "After Adoption"))]
 
 pdf(file=paste(graph_dir, "/figs/HMS-HHI-BAPanel.pdf", sep=""), width=8, height=5)
-ggplot(pbr_temp, aes(hhi, fill = Type)) + labs(x = "HHI") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=250, position = 'identity') +
-  theme(legend.justification=c(1,1), legend.position=c(1,1)) + facet_grid(~Status)
+ggplot(pbr_temp, aes(x=hhi))+
+  geom_histogram(alpha=1, center=200, aes(y = ..density..), binwidth=400, col="grey30", fill="skyblue")+
+  scale_x_continuous("HHI", limits = c(0, 10000)) + theme_minimal() + facet_wrap( ~ Status + Type)
 dev.off()
-rm(pbr_temp, pbr_temp2)
+rm(pbr_temp)
 
 # Concentration Ratio
 pbr_temp = pbrands[ever_holder==1, .(household_code, holder, c1, c2, c3)]
@@ -145,11 +141,10 @@ pbr_temp = melt(pbr_temp, id.vars = c("household_code", "holder"),
 pbr_temp[, `:=`(Status = factor(ifelse(holder==0, "Before Adoption", "After Adoption"),
                                 levels=c("Before Adoption", "After Adoption")),
                 Type = toupper(variable))]
-pdf(file=paste(graph_dir, "/figs/HMS-CR-BAdoption.pdf", sep=""), 
-    width=8, height=5)
-ggplot(pbr_temp, aes(Share, fill = Status)) + labs(x = "Expenditure Share") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=0.05, position = 'identity') +
-  theme(legend.justification=c(1,1), legend.position=c(1,1)) + facet_grid(~Type)
+pdf(file=paste(graph_dir, "/figs/HMS-CR-BAdoption.pdf", sep=""), width=8, height=12)
+ggplot(pbr_temp, aes(x=Share))+ theme_minimal() +
+  geom_histogram(alpha=1, center=0.025, aes(y = ..density..), binwidth=0.05, col="grey30", fill="skyblue")+
+  scale_x_continuous("Expenditure Share", limits = c(0, 1)) + facet_grid(Type~Status)
 dev.off()
 rm(pbr_temp)
 
@@ -173,89 +168,58 @@ treat_ctrl=treat_ctrl[, .(topb=sum(ind1),
                           annual_spent = -tot_spent[1]/ny, 
                           brand_descr=brand_descr[1]), 
                       by = c("household_code", "treat", "after")]
+treat_ctrl[, `:=`(treat_labels = factor(ifelse(treat==0, "Reference Group", "Adoption Group"),
+                                    levels = c("Reference Group", "Adoption Group")),
+                  bafter = ifelse(after==0, "Years 2008 and 2009", "Years 2012 and 2013"))]
 
 # HHI Before Adoption 
 pdf(file=paste(graph_dir, "/figs/HMS-HHI-Before-Treat.pdf", sep=""), width=8, height=5)
-par(mfrow=c(1,2))
-hist(treat_ctrl[treat==0 & after==0, hhi], xlab="HHI", xlim=c(0, 10000), 
-     nclass=20, ylim=c(0, 0.0004), freq=F, main = "Reference Group")
-hist(treat_ctrl[treat==1 & after==0, hhi], xlab="HHI", xlim=c(0, 10000), 
-     nclass=20, ylim=c(0, 0.0004), freq=F, main = "Adoption Group")
-par(mfrow=c(1,1))
+ggplot(treat_ctrl[after==0,], aes(x=hhi))+theme_minimal()+
+  geom_histogram(alpha=1, center=200, aes(y = ..density..), binwidth=400, col="grey30", fill="skyblue")+
+  scale_x_continuous("HHI", limits = c(0, 10000)) + facet_wrap(~ treat_labels)
 dev.off()
 
 # HHI After Adoption 
 pdf(file=paste(graph_dir, "/figs/HMS-HHI-After-Treat.pdf", sep=""), width=8, height=5)
-par(mfrow=c(1,2))
-hist(treat_ctrl[treat==0 & after==1, hhi], xlab="HHI", xlim=c(0, 10000), 
-     nclass=20, ylim=c(0, 0.0004), freq=F, main = "Reference Group")
-hist(treat_ctrl[treat==1 & after==1, hhi], xlab="HHI", xlim=c(0, 10000), 
-     nclass=20, ylim=c(0, 0.0004), freq=F, main = "Adoption Group")
-par(mfrow=c(1,1))
+ggplot(treat_ctrl[after==1,], aes(x=hhi))+theme_minimal()+
+  geom_histogram(alpha=1, center=200, aes(y = ..density..), binwidth=400, col="grey30", fill="skyblue")+
+  scale_x_continuous("HHI", limits = c(0, 10000)) + facet_wrap(~ treat_labels)
 dev.off()
 
 # HHI Panel 
-pdf(file=paste(graph_dir, "/figs/HMS-HHI-Panel.pdf", sep=""), width=8, height=5)
-treat_ctrl[,`:=`(Status = ifelse(treat==0, "Reference Group", "Adoption Group"),
-                 bafter = ifelse(after==0, "Years 2008 and 2009", "Years 2012 and 2013"))]
-ggplot(treat_ctrl[, .(hhi, Status, bafter)], aes(hhi, fill = Status)) + labs(x = "HHI") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=200, position = 'identity')+
-  theme(legend.justification=c(1,1), legend.position=c(1,1)) + facet_grid(~bafter)
+pdf(file=paste(graph_dir, "/figs/HMS-HHI-Panel.pdf", sep=""), width=8, height=12)
+ggplot(treat_ctrl, aes(x=hhi))+theme_minimal()+
+  geom_histogram(alpha=1, center=200, aes(y = ..density..), binwidth=400, col="grey30", fill="skyblue")+
+  scale_x_continuous("HHI", limits = c(0, 10000)) + facet_grid(treat_labels ~ bafter)
 dev.off()
 
 # Spending Before Adoption 
 pdf(file=paste(graph_dir, "/figs/HMS-Spending-Before-Treat.pdf", sep=""), width=8, height=5)
-par(mfrow=c(1,2))
-hist(treat_ctrl[treat==0 & after==0 & annual_spent<=500, annual_spent], xlab="Annual Spending", 
-     xlim=c(0, 500), nclass=25, ylim=c(0, 0.012), freq=F, main = "Reference Group")
-abline(v=median(treat_ctrl[treat==0 & after==0, annual_spent]), col = "red")
-hist(treat_ctrl[treat==1 & after==0 & annual_spent<=500, annual_spent], xlab="Annual Spending", 
-     xlim=c(0, 500), nclass=25, ylim=c(0, 0.012), freq=F, main = "Adoption Group")
-abline(v=median(treat_ctrl[treat==1 & after==0, annual_spent]), col = "red")
-par(mfrow=c(1,1))
+ggplot(treat_ctrl[after==0 & annual_spent<=500, ], aes(x=annual_spent))+theme_minimal()+
+  geom_histogram(alpha=1, center=10, aes(y = ..density..), binwidth=20, col="grey30", fill="skyblue")+
+  scale_x_continuous("Annual Spending", limits = c(0, 500)) + facet_wrap(~ treat_labels)
 dev.off()
 
 # Spending After Adoption 
 pdf(file=paste(graph_dir, "/figs/HMS-Spending-After-Treat.pdf", sep=""), width=8, height=5)
-par(mfrow=c(1,2))
-hist(treat_ctrl[treat==0 & after==1 & annual_spent<=500, annual_spent], xlab="Annual Spending", 
-     xlim=c(0, 500), nclass=25, ylim=c(0, 0.012), freq=F, main = "Reference Group")
-abline(v=median(treat_ctrl[treat==0 & after==1, annual_spent]), col = "red")
-hist(treat_ctrl[treat==1 & after==1 & annual_spent<=500, annual_spent], xlab="Annual Spending", 
-     xlim=c(0, 500), nclass=25, ylim=c(0, 0.012), freq=F, main = "Adoption Group")
-abline(v=median(treat_ctrl[treat==1 & after==1, annual_spent]), col = "red")
-par(mfrow=c(1,1))
+ggplot(treat_ctrl[after==1 & annual_spent<=500, ], aes(x=annual_spent))+theme_minimal()+
+  geom_histogram(alpha=1, center=10, aes(y = ..density..), binwidth=20, col="grey30", fill="skyblue")+
+  scale_x_continuous("Annual Spending", limits = c(0, 500)) + facet_wrap(~ treat_labels)
 dev.off()
 
 # Spending B/After Adoption 
 pdf(file=paste(graph_dir, "/figs/HMS-Spending-BAfter.pdf", sep=""), width=8, height=5)
-par(mfrow=c(1,2))
-hist(treat_ctrl[treat==1 & after==0 & annual_spent<=500, annual_spent], xlab="Annual Spending", 
-     xlim=c(0, 500), nclass=25, ylim=c(0, 0.012), freq=F, main = "Before Adoption")
-abline(v=median(treat_ctrl[treat==1 & after==0, annual_spent]), col = "red")
-hist(treat_ctrl[treat==1 & after==1 & annual_spent<=500, annual_spent], xlab="Annual Spending", 
-     xlim=c(0, 500), nclass=25, ylim=c(0, 0.012), freq=F, main = "After Adoption")
-abline(v=median(treat_ctrl[treat==1 & after==1, annual_spent]), col = "red")
-par(mfrow=c(1,1))
+ggplot(treat_ctrl[treat==1 & annual_spent<=500, ], aes(x=annual_spent))+theme_minimal()+
+  geom_histogram(alpha=1, center=10, aes(y = ..density..), binwidth=20, col="grey30", fill="skyblue")+
+  scale_x_continuous("Annual Spending", limits = c(0, 500)) + facet_wrap(~ bafter)
 dev.off()
 
 # Spending After Adoption 
-pdf(file=paste(graph_dir, "/figs/HMS-Spending-Panel.pdf", sep=""), width=8, height=5)
-treat_ctrl[,`:=`(Status = ifelse(treat==0, "Control", "Treatment"),
-                 bafter = ifelse(after==0, "Years 2008 and 2009", "Years 2012 and 2013"))]
-md00 = round(median(treat_ctrl[annual_spent<=500 & treat==0 & after==0, annual_spent]), 2)
-md10 = round(median(treat_ctrl[annual_spent<=500 & treat==1 & after==0, annual_spent]), 2)
-md01 = round(median(treat_ctrl[annual_spent<=500 & treat==0 & after==1, annual_spent]), 2)
-md11 = round(median(treat_ctrl[annual_spent<=500 & treat==1 & after==1, annual_spent]), 2)
-ggplot(treat_ctrl[annual_spent<=500, .(annual_spent, Status, bafter)], 
-       aes(annual_spent, fill = Status)) + labs(x = "Annual Spending") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=10, position = 'identity') +
-  annotate("text", x = 300, y = 0.004, 
-           label = c(paste("Reference median:", md00), paste("Reference median:", md01)), 
-           hjust=0, size=2.5) +
-  annotate("text", x = 300, y = 0.0035, 
-           label = c(paste("Adoption median:", md10), paste("Adoption median:", md11)), 
-           hjust=0, size=2.5) +
-  theme(legend.justification=c(1,1), legend.position=c(1,1)) + facet_grid(~bafter)
+treat_ctrl[annual_spent<=500, med:=median(annual_spent), by = c("treat", "after")]
+pdf(file=paste(graph_dir, "/figs/HMS-Spending-Panel.pdf", sep=""), width=8, height=12)
+ggplot(treat_ctrl[annual_spent<=500, ], aes(x = annual_spent)) + 
+  geom_histogram(alpha=1, center=10, aes(y = ..density..), binwidth=20, col="grey30", fill="skyblue")+
+  scale_x_continuous("Annual Spending", limits = c(0, 500)) + geom_vline(aes(xintercept = med), col="red")+
+  theme_minimal() + facet_grid(treat_labels ~ bafter)
 dev.off()
 #----------------------------------------------------------------------------------------------#

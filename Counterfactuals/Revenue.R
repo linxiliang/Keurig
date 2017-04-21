@@ -145,7 +145,8 @@ hhRevFun<-function(i){
   hh_retailers_temp[, `:=`(rev1=rev1/1000, rev2=rev2/1000, rev3=rev3/1000)]
   hh_retailers_temp[keurig==0, brand_descr:="GROUND"]
   hh_agg = hh_retailers_temp[, .(rev1 = sum(rev1), rev2 = sum(rev2), rev3 = sum(rev3)), 
-                             by = c("household_code", "brand_descr", "dma_code", "retailer_code", "week_end", "tprob", "pprob")]
+                             by = c("household_code", "brand_descr", "dma_code", "retailer_code", 
+                                    "week_end", "tprob", "pprob")]
   hh_agg = hh_retailers_temp[, .(rev1 = sum(rev1 * tprob)/sum(tprob),
                                  rev2 = sum(rev2 * tprob)/sum(tprob),
                                  rev3 = sum(rev3 * tprob)/sum(tprob)),

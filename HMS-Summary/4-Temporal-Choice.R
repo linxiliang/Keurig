@@ -20,18 +20,13 @@ T_purchases = T_purchases[, .(Percent=mean(indicator)),
 T_purchases[,`:=`(Status = factor(ifelse(holder==0&ever_holder==0, "Never Adopted", 
                                          ifelse(holder==0, "Before Adoption", "After Adoption")),
                                   levels = c("Never Adopted", "Before Adoption", "After Adoption")))]
-md1 = round(median(T_purchases[holder==0&ever_holder==0, Percent]), 2)
-md2 = round(median(T_purchases[holder==0&ever_holder==1, Percent]), 2)
-md3 = round(median(T_purchases[holder==1&ever_holder==1, Percent]), 2)
+T_purchases[, `:=`(med = round(median(Percent), 3)), by = c("holder", "ever_holder")]
 
 pdf(file=paste(graph_dir, "/figs/HMS-Temporal-Switching-BAfter.pdf", sep=""), width=8, height=5)
-ggplot(T_purchases[, .(Percent, Status)], aes(Percent, fill = Status)) + 
-  labs(x = "Percent of Trips Choosing a Subset of Brands of Last Trip") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=0.05, position = 'identity') +
-  annotate("text", x = c(0.70,0.70,0.70), y=c(1.9, 1.8, 1.7), 
-           label = c(paste("Never Adopted Median:", md1), paste("Before Adoption Median:", md2),
-                     paste("After Adoption Median:", md3)), hjust=0, size = 3) +
-  theme(legend.justification=c(0,1), legend.position=c(0.70,1))
+ggplot(T_purchases, aes(x=Percent))+ theme_minimal() +facet_wrap( ~ Status)+
+  scale_x_continuous("Percent of Trips Choosing a Subset of Brands of Last Trip", limits = c(0, 1))+
+  geom_histogram(alpha=1, center=0.05, aes(y = ..density..), binwidth=0.10, col="grey30", fill="skyblue")+
+  geom_vline(aes(xintercept = med), col="red")
 dev.off()
 
 
@@ -48,23 +43,16 @@ T_treat_ctrl = T_treat_ctrl[, .(Percent=mean(indicator)),
                             by = c("household_code", "treat", "after")]
 
 # Percentage of trips that buys a subset of brands of the last trip.
-T_treat_ctrl[,`:=`(Status = ifelse(treat==0, "Reference", "Adopter"),
+T_treat_ctrl[,`:=`(Status = factor(ifelse(treat==0, "Reference Group", "Adoption Group"),
+                                   levels = c("Reference Group", "Adoption Group")),
                    bafter = ifelse(after==0, "Years 2008 and 2009", "Years 2012 and 2013"))]
-md00 = round(median(T_treat_ctrl[treat==0 & after==0, Percent]), 2)
-md10 = round(median(T_treat_ctrl[treat==1 & after==0, Percent]), 2)
-md01 = round(median(T_treat_ctrl[treat==0 & after==1, Percent]), 2)
-md11 = round(median(T_treat_ctrl[treat==1 & after==1, Percent]), 2)
-pdf(file=paste(graph_dir, "/figs/HMS-Temporal-Switching.pdf", sep=""), width=8, height=5)
-ggplot(T_treat_ctrl[, .(Percent, Status, bafter)], aes(Percent, fill = Status)) + 
-  labs(x = "Percent of Trips Choosing a Subset of Brands of Last Trip") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=0.05, position = 'identity') +
-  annotate("text", x = 0.5, y = 3.5, 
-           label = c(paste("Reference median:", md00),paste("Reference median:", md01)), 
-           hjust=0, size = 3) +
-  annotate("text", x = 0.5, y = 3.25, 
-           label = c(paste("Adopter median:", md10), paste("Adopter median:", md11)), 
-           hjust=0, size = 3) +
-  theme(legend.justification=c(0,1), legend.position=c(0,1)) + facet_grid(~bafter)
+T_treat_ctrl[, `:=`(med = round(median(Percent), 3)), by = c("treat", "after")]
+
+pdf(file=paste(graph_dir, "/figs/HMS-Temporal-Switching.pdf", sep=""), width=8, height=12)
+ggplot(T_treat_ctrl, aes(x=Percent))+ theme_minimal() +facet_grid( Status ~ bafter )+
+  scale_x_continuous("Percent of Trips Choosing a Subset of Brands of Last Trip", limits = c(0, 1))+
+  geom_histogram(alpha=1, center=0.05, aes(y = ..density..), binwidth=0.1, col="grey30", fill="skyblue")+
+  geom_vline(aes(xintercept = med), col="red")
 dev.off()
 
 #----------------------------------------------------------------------------------------------#
@@ -90,18 +78,13 @@ T_purchases = T_purchases[, .(Percent=mean(indicator)),
 T_purchases[,`:=`(Status = factor(ifelse(holder==0&ever_holder==0, "Never Adopted", 
                                          ifelse(holder==0, "Before Adoption", "After Adoption")),
                                   levels = c("Never Adopted", "Before Adoption", "After Adoption")))]
-md1 = round(median(T_purchases[holder==0&ever_holder==0, Percent]), 2)
-md2 = round(median(T_purchases[holder==0&ever_holder==1, Percent]), 2)
-md3 = round(median(T_purchases[holder==1&ever_holder==1, Percent]), 2)
+T_purchases[, `:=`(med = round(median(Percent), 3)), by = c("holder", "ever_holder")]
 
 pdf(file=paste(graph_dir, "/figs/HMS-Temporal-Switching-Flavor-BAfter.pdf", sep=""), width=8, height=5)
-ggplot(T_purchases[, .(Percent, Status)], aes(Percent, fill = Status)) + 
-  labs(x = "Percent of Trips Choosing a Subset of Brands and Flavors of Last Trip") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=0.05, position = 'identity') +
-  annotate("text", x = c(0.75,0.75,0.75), y=c(4, 3.8, 3.6), 
-           label = c(paste("Never Adopted Median:", md1), paste("Before Adoption Median:", md2),
-                     paste("After Adoption Median:", md3)), hjust=0, size = 3) +
-  theme(legend.justification=c(0,1), legend.position=c(0.8,1))
+ggplot(T_purchases, aes(x=Percent))+ theme_minimal() +facet_wrap( ~ Status)+
+  scale_x_continuous("Percent of Trips Choosing a Subset of Brands and Flavors of Last Trip", limits = c(0, 1))+
+  geom_histogram(alpha=1, center=0.05, aes(y = ..density..), binwidth=0.10, col="grey30", fill="skyblue")+
+  geom_vline(aes(xintercept = med), col="red")
 dev.off()
 
 # Treatment versus control
@@ -122,23 +105,16 @@ T_treat_ctrl = T_treat_ctrl[, .(Percent=mean(indicator)),
                             by = c("household_code", "treat", "after")]
 
 # Percentage of trips that buys a subset of brands of the last trip.
-T_treat_ctrl[,`:=`(Status = ifelse(treat==0, "Reference", "Adopter"),
+T_treat_ctrl[,`:=`(Status = factor(ifelse(treat==0, "Reference Group", "Adoption Group"),
+                                   levels = c("Reference Group", "Adoption Group")),
                    bafter = ifelse(after==0, "Years 2008 and 2009", "Years 2012 and 2013"))]
-md00 = round(median(T_treat_ctrl[treat==0 & after==0, Percent]), 2)
-md10 = round(median(T_treat_ctrl[treat==1 & after==0, Percent]), 2)
-md01 = round(median(T_treat_ctrl[treat==0 & after==1, Percent]), 2)
-md11 = round(median(T_treat_ctrl[treat==1 & after==1, Percent]), 2)
-pdf(file=paste(graph_dir, "/figs/HMS-Temporal-Switching-Flavor.pdf", sep=""), width=8, height=5)
-ggplot(T_treat_ctrl[, .(Percent, Status, bafter)], aes(Percent, fill = Status)) + 
-  labs(x = "Percent of Trips Choosing a Subset of Brands and Flavors of Last Trip") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=0.05, position = 'identity') +
-  annotate("text", x = 0.5, y = 3.5, 
-           label = c(paste("Reference median:", md00),paste("Reference median:", md01)), 
-           hjust=0, size = 3) +
-  annotate("text", x = 0.5, y = 3.25, 
-           label = c(paste("Adopter median:", md10), paste("Adopter median:", md11)), 
-           hjust=0, size = 3) +
-  theme(legend.justification=c(0,1), legend.position=c(0,1)) + facet_grid(~bafter)
+T_treat_ctrl[, `:=`(med = round(median(Percent), 3)), by = c("treat", "after")]
+
+pdf(file=paste(graph_dir, "/figs/HMS-Temporal-Switching-Flavor.pdf", sep=""), width=8, height=12)
+ggplot(T_treat_ctrl, aes(x=Percent))+ theme_minimal() +facet_grid( Status ~ bafter )+
+  scale_x_continuous("Percent of Trips Choosing a Subset of Brands and Flavors of Last Trip", limits = c(0, 1))+
+  geom_histogram(alpha=1, center=0.05, aes(y = ..density..), binwidth=0.1, col="grey30", fill="skyblue")+
+  geom_vline(aes(xintercept = med), col="red")
 dev.off()
 
 #----------------------------------------------------------------------------------------------#
@@ -168,18 +144,13 @@ T_purchases = T_purchases[b_ind==1, .(Percent=mean(f_ind)),
 T_purchases[,`:=`(Status = factor(ifelse(holder==0&ever_holder==0, "Never Adopted", 
                                          ifelse(holder==0, "Before Adoption", "After Adoption")),
                                   levels = c("Never Adopted", "Before Adoption", "After Adoption")))]
-md1 = round(median(T_purchases[holder==0&ever_holder==0, Percent]), 2)
-md2 = round(median(T_purchases[holder==0&ever_holder==1, Percent]), 2)
-md3 = round(median(T_purchases[holder==1&ever_holder==1, Percent]), 2)
+T_purchases[, `:=`(med = round(median(Percent), 3)), by = c("holder", "ever_holder")]
 
 pdf(file=paste(graph_dir, "/figs/HMS-Temporal-Switching-Flavor-BAfter-Cond.pdf", sep=""), width=8, height=5)
-ggplot(T_purchases[, .(Percent, Status)], aes(Percent, fill = Status)) + 
-  labs(x = "Percent of Trips Choosing a Subset of Brands and Flavors of Last Trip") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=0.05, position = 'identity') +
-  annotate("text", x = c(0.7,0.7,0.7), y=c(3, 2.8, 2.6), 
-           label = c(paste("Never Adopted Median:", md1), paste("Before Adoption Median:", md2),
-                     paste("After Adoption Median:", md3)), hjust=0, size = 3) +
-  theme(legend.justification=c(0,1), legend.position=c(0.7,1))
+ggplot(T_purchases, aes(x=Percent))+ theme_minimal() +facet_wrap( ~ Status)+
+  scale_x_continuous("Percent of Trips Choosing a Subset of Brands and Flavors of Last Trip", limits = c(0, 1))+
+  geom_histogram(alpha=1, center=0.05, aes(y = ..density..), binwidth=0.10, col="grey30", fill="skyblue")+
+  geom_vline(aes(xintercept = med), col="red")
 dev.off()
 
 # Treatment versus control
@@ -204,23 +175,16 @@ T_treat_ctrl = T_treat_ctrl[b_ind==1, .(Percent=mean(f_ind)),
                             by = c("household_code", "treat", "after")]
 
 # Percentage of trips that buys a subset of brands of the last trip.
-T_treat_ctrl[,`:=`(Status = ifelse(treat==0, "Reference", "Adopter"),
+T_treat_ctrl[,`:=`(Status = factor(ifelse(treat==0, "Reference Group", "Adoption Group"),
+                                   levels = c("Reference Group", "Adoption Group")),
                    bafter = ifelse(after==0, "Years 2008 and 2009", "Years 2012 and 2013"))]
-md00 = round(median(T_treat_ctrl[treat==0 & after==0, Percent]), 2)
-md10 = round(median(T_treat_ctrl[treat==1 & after==0, Percent]), 2)
-md01 = round(median(T_treat_ctrl[treat==0 & after==1, Percent]), 2)
-md11 = round(median(T_treat_ctrl[treat==1 & after==1, Percent]), 2)
+T_treat_ctrl[, `:=`(med = round(median(Percent), 3)), by = c("treat", "after")]
+
 pdf(file=paste(graph_dir, "/figs/HMS-Temporal-Switching-Flavor-Cond.pdf", sep=""), width=8, height=5)
-ggplot(T_treat_ctrl[, .(Percent, Status, bafter)], aes(Percent, fill = Status)) + 
-  labs(x = "Percent of Trips Choosing a Subset of Brands and Flavors of Last Trip") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=0.05, position = 'identity') +
-  annotate("text", x = 0.5, y = 3.5, 
-           label = c(paste("Reference median:", md00),paste("Reference median:", md01)), 
-           hjust=0, size = 3) +
-  annotate("text", x = 0.5, y = 3.25, 
-           label = c(paste("Adopter median:", md10), paste("Adopter median:", md11)), 
-           hjust=0, size = 3) +
-  theme(legend.justification=c(0,1), legend.position=c(0,1)) + facet_grid(~bafter)
+ggplot(T_treat_ctrl, aes(x=Percent))+ theme_minimal() +facet_grid( Status ~ bafter )+
+  scale_x_continuous("Percent of Trips Choosing a Subset of Brands and Flavors of Last Trip", limits = c(0, 1))+
+  geom_histogram(alpha=1, center=0.05, aes(y = ..density..), binwidth=0.1, col="grey30", fill="skyblue")+
+  geom_vline(aes(xintercept = med), col="red")
 dev.off()
 
 #----------------------------------------------------------------------------------------------#

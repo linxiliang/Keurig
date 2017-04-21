@@ -84,15 +84,15 @@ setkey(hh_sum, ct, mt, t)
 hh_sum[, Type := ifelse(mt==1, "GMCR Only", ifelse(mt==2, "GMCR+Third Party", "GMCR+Licensed"))]
 adpt1 = ggplot(hh_sum[.(1), ], aes(x=t, y=prob, group = mt, colour= Type))+
   theme(legend.position=c(0.3,0.8), plot.title = element_text(size=12))+
-  geom_line()+ylim(0, 0.20) +  labs(list(title="Original Households", x="Time", y="Adoption Rate"))
+  geom_line(aes(linetype=Type))+ylim(0, 0.20)+labs(list(title="Original Households", x="Time", y="Adoption Rate"))
 adpt2 = ggplot(hh_sum[.(2), ], aes(x=t, y=prob, group = mt, colour= Type))+
   theme(legend.position="none", plot.title = element_text(size=12), axis.text.y=element_blank(), 
         axis.ticks=element_blank(), axis.title.y=element_blank())+
-  geom_line()+ylim(0, 0.20) +  labs(list(title="Homogeneous but Variety Seeking", x="Time"))
+  geom_line(aes(linetype=Type))+ylim(0, 0.20)+labs(list(title="Homogeneous but Variety Seeking", x="Time"))
 adpt3 = ggplot(hh_sum[.(3), ], aes(x=t, y=prob, group = mt, colour= Type))+
   theme(legend.position="none", plot.title = element_text(size=12), axis.text.y=element_blank(), 
         axis.ticks=element_blank(), axis.title.y=element_blank())+
-  geom_line()+ylim(0, 0.20) + labs(list(title="Heterogeneous but Not Variety Seeking", x="Time"))
+  geom_line(aes(linetype=Type))+ylim(0, 0.20)+labs(list(title="Heterogeneous but Not Variety Seeking", x="Time"))
 multplot = marrangeGrob(list(adpt1, adpt2, adpt3), ncol=3, nrow=1, top="")
 ggsave(paste(graph_dir, "/figs/adoption_rate.pdf", sep=""), multplot, width=10, height=4)
 
@@ -136,15 +136,15 @@ setkey(hh_rev_gmcr, ct, mt, t)
 hh_rev_agg[, Type := ifelse(mt==1, "GMCR Only", ifelse(mt==2, "GMCR+Third Party", "GMCR+Licensed"))]
 orev1 = ggplot(hh_rev_agg[.(1), ], aes(x=t, y=rev, group = mt, colour= Type))+
   theme(legend.position=c(0.3,0.8), plot.title = element_text(size=12))+
-  geom_line()+ylim(0, 0.15) +  labs(list(title="Original Households", x="Time", y="Revenue"))
+  geom_line(aes(linetype=Type))+ylim(0, 0.15)+labs(list(title="Original Households", x="Time", y="Revenue"))
 orev2 = ggplot(hh_rev_agg[.(2), ], aes(x=t, y=rev, group = mt, colour= Type))+
   theme(legend.position="none", plot.title = element_text(size=12), axis.text.y=element_blank(), 
         axis.ticks=element_blank(), axis.title.y=element_blank())+
-  geom_line()+ylim(0, 0.15) +  labs(list(title="Homogeneous but Variety Seeking", x="Time"))
+  geom_line(aes(linetype=Type))+ylim(0, 0.15) +  labs(list(title="Homogeneous but Variety Seeking", x="Time"))
 orev3 = ggplot(hh_rev_agg[.(3), ], aes(x=t, y=rev, group = mt, colour= Type))+
   theme(legend.position="none", plot.title = element_text(size=12), axis.text.y=element_blank(), 
         axis.ticks=element_blank(), axis.title.y=element_blank())+
-  geom_line()+ylim(0, 0.15) + labs(list(title="Heterogeneous but Not Variety Seeking", x="Time"))
+  geom_line(aes(linetype=Type))+ylim(0, 0.15)+labs(list(title="Heterogeneous but Not Variety Seeking", x="Time"))
 multplot = marrangeGrob(list(orev1, orev2, orev3), ncol=3, nrow=1, top="")
 ggsave(paste(graph_dir, "/figs/overall_rev.pdf", sep=""), multplot, width=10, height=4)
 
@@ -153,15 +153,15 @@ ggsave(paste(graph_dir, "/figs/overall_rev.pdf", sep=""), multplot, width=10, he
 hh_rev_gmcr[, Type := ifelse(mt==1, "GMCR Only", ifelse(mt==2, "GMCR+Third Party", "GMCR+Licensed"))]
 grev1 = ggplot(hh_rev_gmcr[.(1), ], aes(x=t, y=rev, group = mt, colour= Type))+
   theme(legend.position=c(0.3,0.8), plot.title = element_text(size=12))+
-  geom_line()+ylim(0, 0.015) +  labs(list(title="Original Households", x="Time", y="Revenue"))
+  geom_line(aes(linetype=Type))+ylim(0, 0.015)+labs(list(title="Original Households", x="Time", y="Revenue"))
 grev2 = ggplot(hh_rev_gmcr[.(2), ], aes(x=t, y=rev, group = mt, colour= Type))+
   theme(legend.position="none", plot.title = element_text(size=12), axis.text.y=element_blank(), 
         axis.ticks=element_blank(), axis.title.y=element_blank())+
-  geom_line()+ylim(0, 0.015) +  labs(list(title="Homogeneous but Variety Seeking", x="Time"))
+  geom_line(aes(linetype=Type))+ylim(0, 0.015) +  labs(list(title="Homogeneous but Variety Seeking", x="Time"))
 grev3 = ggplot(hh_rev_gmcr[.(3), ], aes(x=t, y=rev, group = mt, colour= Type))+
   theme(legend.position="none", plot.title = element_text(size=12), axis.text.y=element_blank(), 
         axis.ticks=element_blank(), axis.title.y=element_blank())+
-  geom_line()+ylim(0, 0.015) + labs(list(title="Heterogeneous but Not Variety Seeking", x="Time"))
+  geom_line(aes(linetype=Type))+ylim(0, 0.015)+labs(list(title="Heterogeneous but Not Variety Seeking", x="Time"))
 multplot = marrangeGrob(list(grev1, grev2, grev3), ncol=3, nrow=1, top="")
 ggsave(paste(graph_dir, "/figs/gmcr_rev.pdf", sep=""), multplot, width=10, height=4)
 

@@ -56,7 +56,7 @@ percent_tab[, pos := cumsum(Percent) - (0.5 * Percent), by = "Type"]
 percent_tab[Percent<=0.000001, pos:=NA]
 pdf(file=paste(graph_dir, "/figs/HH-After-Type-Percentage.pdf", sep=""), width=8, height=5)
 ggplot(percent_tab, aes(x=Type, y=Percent, fill=Status))+ theme_bw() +
-  geom_bar(position = "fill",stat = "identity", width=.5) + coord_flip() +
+  geom_bar(position = "fill", stat = "identity", width=.5) + coord_flip() +
   scale_y_continuous(labels = percent) + scale_fill_brewer() +
   geom_text(aes(label = paste0(round(Percent,3)*100,"%"), y = pos), size = 3)
 dev.off()
@@ -99,14 +99,13 @@ vsize = vsize[ntrip>=5, ]
 pdf(file=paste(graph_dir, "/figs/HMS-CoefVariation-BAfter.pdf", sep=""), width=8, height=5)
 vsize_adoption = vsize[ever_holder==1,]
 vsize_adoption[,`:=`(Status = ifelse(holder==0, 'Before Adoption', 'After Adoption'))]
-md0 = round(median(vsize_adoption[holder==0, covar]), 3)
-md1 = round(median(vsize_adoption[holder==1, covar]), 3)
-ggplot(vsize_adoption[covar<=2, .(covar, Status)], aes(covar, fill = Status)) + 
-  labs(x = "Coefficient of Variation") + 
-  geom_histogram(alpha = 0.5, aes(y = ..density..), binwidth=0.05, position = 'identity')+
-  theme(legend.justification=c(0,1), legend.position=c(0,1))+
-  annotate("text", x = 1.5, y = 0.5, label = paste("Before Adoption:", md0), hjust=0, size = 3)+
-  annotate("text", x = 1.5, y = 0.4, label = paste("After Adoption:", md1), hjust=0, size = 3)
+vsize_adoption[, med := round(median(covar), 3), by = "holder"]
+vsize_adoption$Status <- factor(vsize_adoption$Status,
+                       levels = c("Before Adoption", "After Adoption"))
+ggplot(vsize_adoption[covar<=2, .(covar, med, Status)], aes(x = covar)) + 
+  geom_histogram(alpha = 1, center=0.05, aes(y = ..density..), binwidth=0.1, col="grey30", fill="skyblue")+
+  scale_x_continuous("Coefficient of Variation", limits = c(0, 2)) + geom_vline(aes(xintercept = med), col="red")+
+  theme_minimal() + facet_wrap(~ Status)
 dev.off()
 
 # Discrete Choice of Brands Before and After Adoption
@@ -116,7 +115,7 @@ plot_nbt_summary =  nbt_summary[!is.na(Status), .(Percent = as.numeric(.N)),
 plot_nbt_summary[, `:=`(Percent = Percent/sum(Percent)), by = c("ever_holder", "holder", "Status")]
 plot_nbt_summary[, Status:=factor(Status, c("Before Adoption", "After Adoption"))]
 pdf(file=paste(graph_dir, "/figs/HMS-DiscreteChoiceBrand-BAfter.pdf", sep=""), width=8, height=5)
-ggplot(data=plot_nbt_summary[nb<=5, ], aes(x=nb, y=Percent, fill=Status)) + 
+ggplot(data=plot_nbt_summary[nb<=5, ], aes(x=nb, y=Percent, fill=Status)) + theme_minimal()+
   labs(x = "Number of Brands") + scale_fill_manual(values=c('lightskyblue','red'))+ 
   geom_bar(stat="identity", position=position_dodge()) + xlim(0.5, 5.5) + ylim(0,1)+
   theme(legend.justification=c(1,1), legend.position=c(1,1))
@@ -128,7 +127,7 @@ plot_nbt_summary =  nbt_summary[!is.na(Status), .(Percent = as.numeric(.N)),
 plot_nbt_summary[, `:=`(Percent = Percent/sum(Percent)), by = c("ever_holder", "holder", "Status")]
 plot_nbt_summary[, Status:=factor(Status, c("Before Adoption", "After Adoption"))]
 pdf(file=paste(graph_dir, "/figs/HMS-DiscreteChoiceUPC-BAfter.pdf", sep=""), width=8, height=5)
-ggplot(data=plot_nbt_summary[nupc<=5, ], aes(x=nupc, y=Percent, fill=Status)) + 
+ggplot(data=plot_nbt_summary[nupc<=5, ], aes(x=nupc, y=Percent, fill=Status)) + theme_minimal()+
   labs(x = "Number of UPCs Purchased") + scale_fill_manual(values=c('lightskyblue','red'))+ 
   geom_bar(stat="identity", position=position_dodge()) + xlim(0.5, 5.5) + ylim(0,1)+
   theme(legend.justification=c(1,1), legend.position=c(1,1))
@@ -140,7 +139,7 @@ plot_nbt_summary =  nbt_summary[!is.na(Status), .(Percent = as.numeric(.N)),
 plot_nbt_summary[, `:=`(Percent = Percent/sum(Percent)), by = c("ever_holder", "holder", "Status")]
 plot_nbt_summary[, Status:=factor(Status, c("Before Adoption", "After Adoption"))]
 pdf(file=paste(graph_dir, "/figs/HMS-DiscreteChoiceQuantity-BAfter.pdf", sep=""), width=8, height=5)
-ggplot(data=plot_nbt_summary[quantity<=5, ], aes(x=quantity, y=Percent, fill=Status)) + 
+ggplot(data=plot_nbt_summary[quantity<=5, ], aes(x=quantity, y=Percent, fill=Status)) + theme_minimal()+ 
   labs(x = "Number of Units Purchased") + scale_fill_manual(values=c('lightskyblue','red'))+ 
   geom_bar(stat="identity", position=position_dodge()) + xlim(0.5, 5.5) + ylim(0,1)+
   theme(legend.justification=c(1,1), legend.position=c(1,1))
@@ -152,7 +151,7 @@ plot_nbt_summary =  nbt_summary[!is.na(Status), .(Percent = as.numeric(.N)),
 plot_nbt_summary[, `:=`(Percent = Percent/sum(Percent)), by = c("ever_holder", "holder", "Status")]
 plot_nbt_summary[, Status:=factor(Status, c("Before Adoption", "After Adoption"))]
 pdf(file=paste(graph_dir, "/figs/HMS-DiscreteChoiceType-BAfter.pdf", sep=""), width=8, height=5)
-ggplot(data=plot_nbt_summary, aes(x=ntype, y=Percent, fill=Status)) + 
+ggplot(data=plot_nbt_summary, aes(x=ntype, y=Percent, fill=Status)) + theme_minimal()+
   labs(x = "Types Purchased") + scale_fill_manual(values=c('lightskyblue','red'))+ 
   geom_bar(stat="identity", position=position_dodge()) + xlim(0.5, 2.5) + ylim(0,1)+
   theme(legend.justification=c(1,1), legend.position=c(1,1))
@@ -164,7 +163,7 @@ plot_nbt_summary =  nbt_summary[!is.na(Status), .(Percent = as.numeric(.N)),
 plot_nbt_summary[, `:=`(Percent = Percent/sum(Percent)), by = c("ever_holder", "holder", "Status")]
 plot_nbt_summary[, Status:=factor(Status, c("Before Adoption", "After Adoption"))]
 pdf(file=paste(graph_dir, "/figs/HMS-DiscreteChoicenBType-BAfter.pdf", sep=""), width=8, height=5)
-ggplot(data=plot_nbt_summary, aes(x=nbtype, y=Percent, fill=Status)) + 
+ggplot(data=plot_nbt_summary, aes(x=nbtype, y=Percent, fill=Status)) + theme_minimal()+
   labs(x = "Number of Brands Purchased") + scale_fill_manual(values=c('lightskyblue','red'))+ 
   geom_bar(stat="identity", position=position_dodge()) + xlim(0.5, 5.5) + ylim(0,1)+
   theme(legend.justification=c(1,1), legend.position=c(1,1))
@@ -176,7 +175,7 @@ plot_nbt_summary =  nbt_summary[!is.na(Status), .(Percent = as.numeric(.N)),
 plot_nbt_summary[, `:=`(Percent = Percent/sum(Percent)), by = c("ever_holder", "holder", "Status")]
 plot_nbt_summary[, Status:=factor(Status, c("Before Adoption", "After Adoption"))]
 pdf(file=paste(graph_dir, "/figs/HMS-DiscreteChoicenBFlavor-BAfter.pdf", sep=""), width=8, height=5)
-ggplot(data=plot_nbt_summary, aes(x=nbfr, y=Percent, fill=Status)) + 
+ggplot(data=plot_nbt_summary, aes(x=nbfr, y=Percent, fill=Status)) + theme_minimal()+
   labs(x = "Brand and Flavors Purchased") + scale_fill_manual(values=c('lightskyblue','red'))+ 
   geom_bar(stat="identity", position=position_dodge()) + xlim(0.5, 5.5) + ylim(0,1)+
   theme(legend.justification=c(1,1), legend.position=c(1,1))
@@ -188,7 +187,7 @@ plot_nbt_summary =  nbt_summary[!is.na(Status), .(Percent = as.numeric(.N)),
 plot_nbt_summary[, `:=`(Percent = Percent/sum(Percent)), by = c("ever_holder", "holder", "Status")]
 plot_nbt_summary[, Status:=factor(Status, c("Before Adoption", "After Adoption"))]
 pdf(file=paste(graph_dir, "/figs/HMS-DiscreteChoicenBFlavorDescr-BAfter.pdf", sep=""), width=8, height=5)
-ggplot(data=plot_nbt_summary, aes(x=nbfrd, y=Percent, fill=Status)) + 
+ggplot(data=plot_nbt_summary, aes(x=nbfrd, y=Percent, fill=Status)) + theme_minimal() +
   labs(x = "Brand and Flavors Purchased") + scale_fill_manual(values=c('lightskyblue','red'))+ 
   geom_bar(stat="identity", position=position_dodge()) + xlim(0.5, 5.5) + ylim(0,1)+
   theme(legend.justification=c(1,1), legend.position=c(1,1))
@@ -200,7 +199,7 @@ plot_nbt_summary =  nbt_summary[!is.na(Status), .(Percent = as.numeric(.N)),
                         by = c("ever_holder", "holder", "Status", "nb")]
 plot_nbt_summary[, `:=`(Percent = Percent/sum(Percent)), by = c("ever_holder", "holder", "Status")]
 plot_nbt_summary[, Status:=factor(Status, c("Never Adopted", "Before Adoption"))]
-ggplot(data=plot_nbt_summary[nb<=3, ], aes(x=nb, y=Percent, fill=Status)) + 
+ggplot(data=plot_nbt_summary[nb<=3, ], aes(x=nb, y=Percent, fill=Status)) + theme_minimal() +
   labs(x = "Number of Brands") + scale_fill_manual(values=c('lightskyblue','red'))+ 
   geom_bar(stat="identity", position=position_dodge()) + xlim(0.5, 5.5) + ylim(0,1)+
   theme(legend.justification=c(1,1), legend.position=c(1,1))
@@ -234,16 +233,16 @@ nbt_table[, `:=`(Status = factor(ifelse(ever_holder==0, "Never Adopted",
                                  levels = c("After Adoption", "Before Adoption", "Never Adopted")),
                  Type = factor(ifelse(variable=="qdum", "Quantity>1", 
                                       ifelse(variable=="fdum", "No. of Flavors>1", "No. of Brands>1")),
-                               levels = c("Quantity>1", "No. of Flavors>1", "No. of Brands>1")))]
+                               levels = c("No. of Brands>1", "No. of Flavors>1", "Quantity>1")))]
 setkeyv(nbt_table, c("Status", "Type"))
+nbt_table = nbt_table[order(-Type), ]
 nbt_table[, pos := cumsum(Percent) - (0.5 * Percent), by = "Status"]
-nbt_table[Percent<=0.000001, pos:=NA]
 
 # BarPlot
 pdf(file=paste(graph_dir, "/figs/NO-Discrete-Choice-By-Type-Cond.pdf", sep=""), width=8, height=5)
 ggplot(nbt_table, aes(x=Status, y=Percent, fill=Type))+ theme_bw() +
-  geom_bar(position = "fill",stat = "identity", width=.5) + coord_flip() +
-  scale_y_continuous(labels = percent) + scale_fill_brewer() +
+  geom_bar(position = "fill",stat = "identity", width=.5) + coord_flip()+scale_fill_brewer()+
+  scale_y_continuous(labels = percent) + guides(fill = guide_legend(reverse = TRUE))+
   geom_text(aes(label = paste0(round(Percent,3)*100,"%"), y = pos), size = 3)
 dev.off()
 
@@ -263,17 +262,18 @@ nbt_table[, `:=`(Status=factor(ifelse(ever_holder==0, "Never Adopted",
                                     ifelse(variable=="qdum", "Quantity>1", 
                                            ifelse(variable=="fdum", "No. of Flavors>1", 
                                                   "No. of Brands>1"))),
-                             levels = c("Discrete Choice", "Quantity>1", 
-                                        "No. of Flavors>1", "No. of Brands>1")))]
+                             levels = c("No. of Brands>1", "No. of Flavors>1", 
+                                        "Quantity>1", "Discrete Choice")))]
 setkeyv(nbt_table, c("Status", "Type"))
+nbt_table = nbt_table[order(-Type), ]
 nbt_table[, pos := cumsum(Percent) - (0.5 * Percent), by = "Status"]
 nbt_table[Percent<=0.000001, pos:=NA]
 
 # BarPlot
-pdf(file=paste(graph_dir, "/figs/NO-Discrete-Choice-By-Type.pdf", sep=""), width=12, height=7.5)
-ggplot(nbt_table, aes(x=Status, y=Percent, fill=Type))+ theme_bw() +
+pdf(file=paste(graph_dir, "/figs/NO-Discrete-Choice-By-Type.pdf", sep=""), width=8, height=5)
+ggplot(nbt_table, aes(x=Status, y=Percent, fill=Type))+ theme_bw() + 
   geom_bar(position = "fill",stat = "identity", width=.5) + coord_flip() +
-  scale_y_continuous(labels = percent) + scale_fill_brewer() +
+  scale_y_continuous(labels = percent) + scale_fill_brewer() + guides(fill = guide_legend(reverse = T))+
   geom_text(aes(label = paste0(round(Percent,3)*100,"%"), y = pos), size = 3)
 dev.off()
 

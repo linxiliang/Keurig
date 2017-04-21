@@ -224,5 +224,5 @@ hh_agg[, cv_percent := 100*cval/(total_price_paid)]
 setkey(hh_agg, Type)
 welgraph = ggplot(hh_agg[cv_percent<=5000, ], aes(x=cv_percent))+
   geom_histogram(bins=70, aes(y = ..density..), fill = "skyblue")+
-  theme_bw()+labs(list(x="CV Percent"))+facet_grid(.~Type)
+  theme_minimal()+labs(list(x="CV Percent"))+facet_grid(.~Type)
 ggsave(paste(graph_dir, "/figs/welfare_hist.pdf", sep=""), welgraph, width=10, height=4)
