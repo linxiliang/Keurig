@@ -49,6 +49,10 @@ purchases[, month:=as.factor(format(purchase_date, '%Y-%m'))]
 # purchases = purchases[panel_year>=2008, ]
 
 #---------------------------------------------------------------------------------------------------#
+# Summary of Household Grocery Expenditure and Household Consumption
+
+
+#---------------------------------------------------------------------------------------------------#
 # Generate Summary Statistics about HH information
 # Income Summary
 hh[,`:=`(inc25 = as.integer(household_income<=13),
