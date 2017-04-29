@@ -44,6 +44,7 @@ dma_rank_threshold = 30 # Only DMAs with top N coffee consumption households
 library(glmnet)
 library(data.table)
 setNumericRounding(0)
+library(bit64)
 library(parallel)
 library(nleqslv)
 library(Rcpp)
@@ -54,8 +55,8 @@ library(MASS)
 #Set Working Folder Path Here
 setwd("~/Keurig")
 HMS_input_dir = "Data/HMS-Transactions"
-HMS_trip_dir = "~/!Data/Nielsen/HMS-Raw-R/Meta-Data"
-RMS_input_dir = "~/!Data/Nielsen/RMS-Raw-R/Coffee-Related/Movement"
+HMS_trip_dir = "~/Data/Nielsen/HMS-Raw-R/Meta-Data"
+RMS_input_dir = "~/Data/Nielsen/RMS-Build-2016/RMS-Processed/Modules"
 meta_dir  = "Data/Meta-Data"
 output_dir = "Data/MLogit-Data"
 graph_dir = "Tabfigs/MLogit-Data"

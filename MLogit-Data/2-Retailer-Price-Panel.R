@@ -463,17 +463,34 @@ save(retailer_panel_1, file = paste(output_dir, "/HMS_Imputed_Prices.RData", sep
 
 #---------------------------------------------------------------------------------------------------#
 # Load RMS Movement and aggregate to get average price
-load(paste(RMS_input_dir, "/1463.RData", sep=""))
-move[, `:=`(feature=NULL, display=NULL)]
-setkeyv(move, c("store_code_uc", "panel_year"))
-setkeyv(stores, c("store_code_uc", "panel_year"))
-move = move[stores[,.(store_code_uc, panel_year, retailer_code, dma_code)], nomatch=0L]
-move = move[dma_code %in% top_dma_list, ]
-setkeyv(move, c("upc", "upc_ver_uc"))
-setkeyv(products, c("upc", "upc_ver_uc"))
+file_list = list.files(paste0(RMS_input_dir, "/1463"))
+move_list = as.list(1:length(file_list))
+i = 0
+for (fn in file_list){
+  i = i+1
+  load(paste0(RMS_input_dir, "/1463/", fn))
+  move[, `:=`(feature=NULL, display=NULL, prmult_for_reference_only_do_not_use=NULL, processed=NULL)]
+  move[, panel_year := year(week_end)]
+  setkeyv(move, c("store_code_uc", "panel_year"))
+  setkeyv(stores, c("store_code_uc", "panel_year"))
+  move = move[stores[,.(store_code_uc, panel_year, retailer_code, dma_code)], nomatch=0L]
+  move_list[[i]]= move[dma_code %in% top_dma_list & panel_year<=2013, ]
+}
+
+# Correct version
+move = rbindlist(move_list)
+rm(move_list)
+gc()
+move[, upc_ver_uc := as.integer(median(na.omit(upc_ver_uc))), by = c("upc", "upc_ver_uc_corrected")]
+setnames(move, "upc", "upc_num")
+products[, upc_num := as.integer64(upc)]
+setkeyv(move, c("upc_num", "upc_ver_uc"))
+setkeyv(products, c("upc_num", "upc_ver_uc"))
 products[, keurig:=as.integer(ptype=="KEURIG")]
-move = move[products[,.(upc, upc_ver_uc, brand_descr, keurig, size1_amount,
+move = move[products[,.(upc_num, upc, upc_ver_uc, brand_descr, keurig, size1_amount,
                         ptype, roast, flavored, kona, colombian, sumatra, wb)], nomatch=0L]
+move[, upc_num:=NULL]
+
 move[, brand_descr := ifelse(brand_descr%in%selected_brand_list, brand_descr, "OTHER")]
 move = move[, .(rms_price = mean(price), rms_units = sum(units*prmult), 
                 rms_revenue = sum(price*units*prmult)),
