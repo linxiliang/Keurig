@@ -321,7 +321,8 @@ file.copy(paste(input_dir, "/Brand-Variations.RData", sep=""),
 #------------------------------------------------------------------------------------------#
 # Trip Data
 # Obtain purchase information by week and type of outside option
-load(paste(input_dir, "/Products.RData", sep=""))
+load(paste(output_dir, "/Products.RData", sep=""))
+coff_module = c(1463)
 hot_modules = c(1464, 1467, 1466, 1465, 1463, 1451, 1456, 1462, 1460, 1461, 
                 1458, 1459, 1457, 1048)
 # Need to filter
@@ -344,7 +345,7 @@ gro_modules = setdiff(gro_modules, c(1463, 7755, 9999, 1274, 1272, 1277, 1282, 1
                                      1301, 7370, 7373, 7360, 7375, 7385, 7453, 7454,
                                      7455, 7456, 7457, 7458, 7459, 6025, 7460, 7462, 
                                      7381, 7466, 7464, 7380, 6028, 7798))
-all_modules = list.files(paste(input_dir,"/Purchase-By-Module/", sep=""))
+all_modules = list.files(paste("Data/Nielsen/HMS-Raw-R/Purchase-By-Module/", sep=""))
 all_modules = as.numeric(gsub(".RData", "", all_modules))
 all_modules = setdiff(all_modules, c(1463, 7755))
 
@@ -352,7 +353,7 @@ all_modules = setdiff(all_modules, c(1463, 7755))
 load('Data/Nielsen/HMS-Raw-R/Meta-Data/Trips.RData')
 tnames = names(trips)
 trips[, setdiff(tnames, "trip_code_uc"):=NULL]
-trips[, `:=`(hot=0, caf=0, drink=0, grocery=0, rest=0)]
+trips[, `:=`(coff=0, hot=0, caf=0, drink=0, grocery=0, rest=0)]
 setkey(trips, trip_code_uc)
 
 # Loop over modules to create the summary
@@ -363,6 +364,7 @@ for (module_i in all_modules){
   setkey(sales, trip_code_uc)
   trips = sales[trips]
   trips[is.na(rev), rev:=0]
+  trips[module_i==coff_module, coff := coff + rev]
   trips[module_i%in%hot_modules, hot := hot + rev]
   trips[module_i%in%caf_modules, caf := caf + rev]
   trips[module_i%in%dri_modules, drink := drink + rev]

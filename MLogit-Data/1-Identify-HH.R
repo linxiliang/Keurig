@@ -9,6 +9,9 @@ purchases[upc=="009955504002" & quantity == 12, quantity:=1]
 # Load Product information
 load(paste(meta_dir, "/Products.RData", sep=""))
 
+# Load trip level information to get hh demographics in terms of consumption
+load(paste(HMS_trip_dir, "/Trips.RData", sep=""))
+
 # Classify products based on features, series and prices
 c_list = as.list(1:5)
 c_list[[1]] = c("B30", "K130")
