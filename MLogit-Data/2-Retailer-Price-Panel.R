@@ -340,10 +340,15 @@ retailer_R2 = as.data.table(expand.grid(retailer_code = impute_retailers,
                                         model_code = 1:11))
 retailer_R2[, rsquared := 0]
 for (i in impute_retailers){
-  dt_temp = retailer_panel_1[as.integer(retailer_code)==i, ] 
-  regout = lm(log(price) ~ p_temp1 + p_temp4 + p_temp5 + p_temp8 + p_temp9 + p_temp10 + p_temp11 + 
-                p_temp12 + factor(dma_code) + keurig + factor(brand_descr) + factor(size1_amount) + 
-                factor(week_end)+factor(roast)+kona+colombian+sumatra+wb, data=dt_temp)
+  dt_temp = retailer_panel_1[as.integer(retailer_code)==i, ]
+  formx=paste0("factor(dma_code)+keurig+factor(brand_descr)+factor(size1_amount)+",
+               "factor(week_end)+factor(roast)+kona+colombian+sumatra+wb")
+  if (dt_temp[, length(unique(dma_code))]==1) {
+    formx=paste0("keurig+factor(brand_descr)+factor(size1_amount)+",
+                 "factor(week_end)+factor(roast)+kona+colombian+sumatra+wb")
+  }
+  regout = lm(paste0("log(price) ~ p_temp1 + p_temp4 + p_temp5 + p_temp8 +",
+                     "p_temp9 + p_temp10 + p_temp11 + p_temp12 + ", formx), data=dt_temp)
   regout$xlevels[["factor(week_end)"]] <- union(regout$xlevels[["factor(week_end)"]], levels(factor(dt_temp$week_end)))
   regout$xlevels[["factor(size1_amount)"]] <- union(regout$xlevels[["factor(size1_amount)"]], levels(factor(dt_temp$size1_amount)))
   regout$xlevels[["factor(brand_descr)"]] <- union(regout$xlevels[["factor(brand_descr)"]], levels(factor(dt_temp$brand_descr)))
@@ -351,9 +356,8 @@ for (i in impute_retailers){
   retailer_panel_1[as.integer(retailer_code)==i, p_imputed_1 := exp(predict(regout, dt_temp))]
   retailer_R2[as.integer(retailer_code)==i & as.integer(model_code)==1, rsquared := summary(regout)$r.squared]
   
-  regout = lm(log(price) ~ p_temp2 + p_temp4 + p_temp5 + p_temp8 + p_temp9 + p_temp10 + p_temp11 + 
-                p_temp12 + factor(dma_code) + keurig + factor(brand_descr) + factor(size1_amount) + 
-                factor(week_end)+factor(roast)+kona+colombian+sumatra+wb, data =dt_temp)
+  regout = lm(paste0("log(price) ~ p_temp2 + p_temp4 + p_temp5 + p_temp8 + p_temp9 +",
+                     "p_temp10 + p_temp11 + p_temp12 + ", formx), data=dt_temp)
   regout$xlevels[["factor(week_end)"]] <- union(regout$xlevels[["factor(week_end)"]], levels(factor(dt_temp$week_end)))
   regout$xlevels[["factor(size1_amount)"]] <- union(regout$xlevels[["factor(size1_amount)"]], levels(factor(dt_temp$size1_amount)))
   regout$xlevels[["factor(brand_descr)"]] <- union(regout$xlevels[["factor(brand_descr)"]], levels(factor(dt_temp$brand_descr)))
@@ -361,9 +365,8 @@ for (i in impute_retailers){
   retailer_panel_1[as.integer(retailer_code)==i, p_imputed_2 := exp(predict(regout, dt_temp))]
   retailer_R2[as.integer(retailer_code)==i & as.integer(model_code)==2, rsquared := summary(regout)$r.squared]
   
-  regout = lm(log(price) ~ p_temp2 + p_temp4 + p_temp8 + p_temp9 + p_temp10 + p_temp11 + 
-                p_temp12 + factor(dma_code) + keurig + factor(brand_descr) + factor(size1_amount) + 
-                factor(week_end)+factor(roast)+kona+colombian+sumatra+wb, data =dt_temp)
+  regout = lm(paste0("log(price) ~ p_temp2 + p_temp4 + p_temp8 + p_temp9 + p_temp10 +",
+                     "p_temp11 + p_temp12 + ", formx), data=dt_temp)
   regout$xlevels[["factor(week_end)"]] <- union(regout$xlevels[["factor(week_end)"]], levels(factor(dt_temp$week_end)))
   regout$xlevels[["factor(size1_amount)"]] <- union(regout$xlevels[["factor(size1_amount)"]], levels(factor(dt_temp$size1_amount)))
   regout$xlevels[["factor(brand_descr)"]] <- union(regout$xlevels[["factor(brand_descr)"]], levels(factor(dt_temp$brand_descr)))
@@ -371,9 +374,8 @@ for (i in impute_retailers){
   retailer_panel_1[as.integer(retailer_code)==i, p_imputed_3 := exp(predict(regout, dt_temp))]
   retailer_R2[as.integer(retailer_code)==i & as.integer(model_code)==3, rsquared := summary(regout)$r.squared]
   
-  regout = lm(log(price) ~ p_temp3 + p_temp5 + p_temp7 + p_temp9 + p_temp10 + p_temp11 + 
-                p_temp12 + factor(dma_code) + keurig + factor(brand_descr) + factor(size1_amount) + 
-                factor(week_end)+factor(roast)+kona+colombian+sumatra+wb, data =dt_temp)
+  regout = lm(paste0("log(price) ~ p_temp3 + p_temp5 + p_temp7 + p_temp9 + p_temp10 +",
+                     "p_temp11 + p_temp12 + ", formx), data=dt_temp)
   regout$xlevels[["factor(week_end)"]] <- union(regout$xlevels[["factor(week_end)"]], levels(factor(dt_temp$week_end)))
   regout$xlevels[["factor(size1_amount)"]] <- union(regout$xlevels[["factor(size1_amount)"]], levels(factor(dt_temp$size1_amount)))
   regout$xlevels[["factor(brand_descr)"]] <- union(regout$xlevels[["factor(brand_descr)"]], levels(factor(dt_temp$brand_descr)))
@@ -381,9 +383,7 @@ for (i in impute_retailers){
   retailer_panel_1[as.integer(retailer_code)==i, p_imputed_4 := exp(predict(regout, dt_temp))]
   retailer_R2[as.integer(retailer_code)==i & as.integer(model_code)==4, rsquared := summary(regout)$r.squared]
   
-  regout = lm(log(price) ~ p_temp4 + p_temp8 + p_temp9 + p_temp10 + p_temp11 + 
-                p_temp12 + factor(dma_code) + keurig + factor(brand_descr) + factor(size1_amount) + 
-                factor(week_end)+factor(roast)+kona+colombian+sumatra+wb, data =dt_temp)
+  regout = lm(paste0("log(price) ~ p_temp4 + p_temp8 + p_temp9 + p_temp10 + p_temp11 + p_temp12 + ", formx), data=dt_temp)
   regout$xlevels[["factor(week_end)"]] <- union(regout$xlevels[["factor(week_end)"]], levels(factor(dt_temp$week_end)))
   regout$xlevels[["factor(size1_amount)"]] <- union(regout$xlevels[["factor(size1_amount)"]], levels(factor(dt_temp$size1_amount)))
   regout$xlevels[["factor(brand_descr)"]] <- union(regout$xlevels[["factor(brand_descr)"]], levels(factor(dt_temp$brand_descr)))
@@ -391,9 +391,7 @@ for (i in impute_retailers){
   retailer_panel_1[as.integer(retailer_code)==i, p_imputed_5 := exp(predict(regout, dt_temp))]
   retailer_R2[as.integer(retailer_code)==i & as.integer(model_code)==5, rsquared := summary(regout)$r.squared]
   
-  regout = lm(log(price) ~ p_temp5 + p_temp9 + p_temp10 + p_temp11 + 
-                p_temp12 + factor(dma_code) + keurig + factor(brand_descr) + factor(size1_amount) + 
-                factor(week_end)+factor(roast)+kona+colombian+sumatra+wb, data =dt_temp)
+  regout = lm(paste0("log(price) ~ p_temp5 + p_temp9 + p_temp10 + p_temp11 + p_temp12 + ", formx), data=dt_temp)
   regout$xlevels[["factor(week_end)"]] <- union(regout$xlevels[["factor(week_end)"]], levels(factor(dt_temp$week_end)))
   regout$xlevels[["factor(size1_amount)"]] <- union(regout$xlevels[["factor(size1_amount)"]], levels(factor(dt_temp$size1_amount)))
   regout$xlevels[["factor(brand_descr)"]] <- union(regout$xlevels[["factor(brand_descr)"]], levels(factor(dt_temp$brand_descr)))
@@ -401,9 +399,7 @@ for (i in impute_retailers){
   retailer_panel_1[as.integer(retailer_code)==i, p_imputed_6 := exp(predict(regout, dt_temp))]
   retailer_R2[as.integer(retailer_code)==i & as.integer(model_code)==6, rsquared := summary(regout)$r.squared]
   
-  regout = lm(log(price) ~ p_temp6 + p_temp8 + p_temp10 + p_temp11 + 
-                p_temp12 + factor(dma_code) + keurig + factor(brand_descr) + factor(size1_amount) + 
-                factor(week_end)+factor(roast)+kona+colombian+sumatra+wb, data =dt_temp)
+  regout = lm(paste0("log(price) ~ p_temp6 + p_temp8 + p_temp10 + p_temp11 + p_temp12 + ", formx), data=dt_temp)
   regout$xlevels[["factor(week_end)"]] <- union(regout$xlevels[["factor(week_end)"]], levels(factor(dt_temp$week_end)))
   regout$xlevels[["factor(size1_amount)"]] <- union(regout$xlevels[["factor(size1_amount)"]], levels(factor(dt_temp$size1_amount)))
   regout$xlevels[["factor(brand_descr)"]] <- union(regout$xlevels[["factor(brand_descr)"]], levels(factor(dt_temp$brand_descr)))
@@ -411,9 +407,7 @@ for (i in impute_retailers){
   retailer_panel_1[as.integer(retailer_code)==i, p_imputed_7 := exp(predict(regout, dt_temp))]
   retailer_R2[as.integer(retailer_code)==i & as.integer(model_code)==7, rsquared := summary(regout)$r.squared]
   
-  regout = lm(log(price) ~ p_temp7 + p_temp9 + p_temp10 + p_temp11 + 
-                p_temp12 + factor(dma_code) + keurig + factor(brand_descr) + factor(size1_amount) + 
-                factor(week_end)+factor(roast)+kona+colombian+sumatra+wb, data =dt_temp)
+  regout = lm(paste0("log(price) ~ p_temp7 + p_temp9 + p_temp10 + p_temp11 + p_temp12 + ", formx), data=dt_temp)
   regout$xlevels[["factor(week_end)"]] <- union(regout$xlevels[["factor(week_end)"]], levels(factor(dt_temp$week_end)))
   regout$xlevels[["factor(size1_amount)"]] <- union(regout$xlevels[["factor(size1_amount)"]], levels(factor(dt_temp$size1_amount)))
   regout$xlevels[["factor(brand_descr)"]] <- union(regout$xlevels[["factor(brand_descr)"]], levels(factor(dt_temp$brand_descr)))
@@ -421,9 +415,7 @@ for (i in impute_retailers){
   retailer_panel_1[as.integer(retailer_code)==i, p_imputed_8 := exp(predict(regout, dt_temp))]
   retailer_R2[as.integer(retailer_code)==i &  as.integer(model_code)==8, rsquared := summary(regout)$r.squared]
   
-  regout = lm(log(price) ~ p_temp8 + p_temp10 + p_temp11 + 
-                p_temp12 + factor(dma_code) + keurig + factor(brand_descr) + factor(size1_amount) + 
-                factor(week_end)+factor(roast)+kona+colombian+sumatra+wb, data =dt_temp)
+  regout = lm(paste0("log(price) ~ p_temp8 + p_temp10 + p_temp11 + p_temp12 + ", formx), data=dt_temp)
   regout$xlevels[["factor(week_end)"]] <- union(regout$xlevels[["factor(week_end)"]], levels(factor(dt_temp$week_end)))
   regout$xlevels[["factor(size1_amount)"]] <- union(regout$xlevels[["factor(size1_amount)"]], levels(factor(dt_temp$size1_amount)))
   regout$xlevels[["factor(brand_descr)"]] <- union(regout$xlevels[["factor(brand_descr)"]], levels(factor(dt_temp$brand_descr)))
@@ -431,9 +423,7 @@ for (i in impute_retailers){
   retailer_panel_1[as.integer(retailer_code)==i, p_imputed_9 := exp(predict(regout, dt_temp))]
   retailer_R2[as.integer(retailer_code)==i & as.integer(model_code)==9, rsquared := summary(regout)$r.squared]
   
-  regout = lm(log(price) ~ p_temp9 + p_temp10 + p_temp11 + 
-                p_temp12 + factor(dma_code) + keurig + factor(brand_descr) + factor(size1_amount) + 
-                factor(week_end)+factor(roast)+kona+colombian+sumatra+wb, data =dt_temp)
+  regout = lm(paste0("log(price) ~ p_temp9 + p_temp10 + p_temp11 + p_temp12 + ", formx), data=dt_temp)
   regout$xlevels[["factor(week_end)"]] <- union(regout$xlevels[["factor(week_end)"]], levels(factor(dt_temp$week_end)))
   regout$xlevels[["factor(size1_amount)"]] <- union(regout$xlevels[["factor(size1_amount)"]], levels(factor(dt_temp$size1_amount)))
   regout$xlevels[["factor(brand_descr)"]] <- union(regout$xlevels[["factor(brand_descr)"]], levels(factor(dt_temp$brand_descr)))
@@ -441,9 +431,7 @@ for (i in impute_retailers){
   retailer_panel_1[as.integer(retailer_code)==i, p_imputed_10 := exp(predict(regout, dt_temp))]
   retailer_R2[as.integer(retailer_code)==i & as.integer(model_code)==10, rsquared := summary(regout)$r.squared]
   
-  regout = lm(log(price) ~ p_temp10 + p_temp11 + 
-                p_temp12 + factor(dma_code) + keurig + factor(brand_descr) + factor(size1_amount) + 
-                factor(week_end)+factor(roast)+kona+colombian+sumatra+wb, data =dt_temp)
+  regout = lm(paste0("log(price) ~ p_temp10 + p_temp11 + p_temp12 + ", formx), data=dt_temp)
   regout$xlevels[["factor(week_end)"]] <- union(regout$xlevels[["factor(week_end)"]], levels(factor(dt_temp$week_end)))
   regout$xlevels[["factor(size1_amount)"]] <- union(regout$xlevels[["factor(size1_amount)"]], levels(factor(dt_temp$size1_amount)))
   regout$xlevels[["factor(brand_descr)"]] <- union(regout$xlevels[["factor(brand_descr)"]], levels(factor(dt_temp$brand_descr)))
