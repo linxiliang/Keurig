@@ -112,8 +112,9 @@ brand_type_sales[, presence := .N, by = "brand_descr"]
 
 # Obtain list of brands of interest
 brand_type_sales[, cumshare := cumshare - brand_share]
-selected_brand_list = unique(brand_type_sales[(as.integer(keurig)==1 & cumshare<=0.95) | 
-                                                (as.integer(keurig)==0 & cumshare<=0.90), brand_descr]) 
+# selected_brand_list = unique(brand_type_sales[(as.integer(keurig)==1 & cumshare<=0.95) | 
+#                                                (as.integer(keurig)==0 & cumshare<=0.90), brand_descr])
+selected_brand_list = unique(brand_type_sales[, brand_descr])
 top_keurig_brands = brand_type_sales[as.integer(keurig)==1 & brand_descr!="CTL BR" & brand_share>=0.05, brand_descr]
 top_selling_brands = unique(brand_type_sales[brand_share>=0.05, brand_descr])
 #---------------------------------------------------------------------------------------------------#
@@ -329,7 +330,7 @@ for (i in impute_retailers){
   dt_temp = retailer_panel_1[as.integer(retailer_code)==i, ] 
   regout = lm(price ~ p_temp1 + p_temp4 + p_temp5 + p_temp8 + p_temp9 + p_temp10 + p_temp11 + 
                 p_temp12 + factor(dma_code) + keurig + factor(brand_descr) + factor(size1_amount) + 
-                factor(week_end)+factor(roast)+kona+colombian+sumatra+wb, data =dt_temp)
+                factor(week_end)+factor(roast)+kona+colombian+sumatra+wb, data=dt_temp)
   regout$xlevels[["factor(week_end)"]] <- union(regout$xlevels[["factor(week_end)"]], levels(factor(dt_temp$week_end)))
   regout$xlevels[["factor(size1_amount)"]] <- union(regout$xlevels[["factor(size1_amount)"]], levels(factor(dt_temp$size1_amount)))
   regout$xlevels[["factor(brand_descr)"]] <- union(regout$xlevels[["factor(brand_descr)"]], levels(factor(dt_temp$brand_descr)))
@@ -492,8 +493,8 @@ move = move[products[,.(upc_num, upc, upc_ver_uc, brand_descr, keurig, size1_amo
 move[, upc_num:=NULL]
 
 move[, brand_descr := ifelse(brand_descr%in%selected_brand_list, brand_descr, "OTHER")]
-move = move[, .(rms_price = mean(price), rms_units = sum(units*prmult), 
-                rms_revenue = sum(price*units*prmult)),
+move = move[, .(rms_price = mean(imputed_price, na.rm=T), rms_units = sum(units, na.rm=T), 
+                rms_revenue = sum(imputed_price*units, na.rm=T)),
             by = c("dma_code", "retailer_code", "week_end", "brand_descr", "keurig", "size1_amount",
                    "ptype", "roast", "flavored", "kona", "colombian", "sumatra", "wb")]
 # Merge with original panel, and check the prices.

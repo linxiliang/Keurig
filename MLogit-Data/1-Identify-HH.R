@@ -10,7 +10,7 @@ purchases[upc=="009955504002" & quantity == 12, quantity:=1]
 load(paste(meta_dir, "/Products.RData", sep=""))
 
 # Load trip level information to get hh demographics in terms of consumption
-load(paste(HMS_trip_dir, "/Trips.RData", sep=""))
+load(paste(meta_dir, "/Trips.RData", sep=""))
 
 # Classify products based on features, series and prices
 c_list = as.list(1:5)
@@ -53,6 +53,32 @@ purchases[, month:=as.factor(format(purchase_date, '%Y-%m'))]
 
 #---------------------------------------------------------------------------------------------------#
 # Generate Summary Statistics about HH information
+# Trip pattern summary
+hh_tr_year = trips[, .(total_spent = sum(total_spent), coff = sum(coff), 
+                       caf = sum(caf), drink=sum(drink), grocery = sum(grocery),
+                       rest = sum(rest), ntrips = .N, nretailers = length(unique(retailer_code))),
+                   by = c("household_code", "panel_year")]
+hh_ry = trips[, .(total_spent = sum(total_spent), coff = sum(coff), 
+                  caf = sum(caf), drink=sum(drink), grocery = sum(grocery),
+                  rest = sum(rest), ntrips = .N),
+              by = c("household_code", "retailer_code","panel_year")]
+hh_ry[, `:=`(total_spent_sum = sum(total_spent), coff_sum = sum(coff), 
+             caf_sum = sum(caf), drink_sum=sum(drink), grocery_sum = sum(grocery),
+             rest_sum = sum(rest), ntrips_sum = sum(ntrips)),
+      by = c("household_code", "panel_year")]
+hh_ry = hh_ry[, .(total_spent_hhi = sum((100*total_spent/total_spent_sum)^2),
+                  coff_hhi = sum((100*coff/coff_sum)^2), 
+                  caf_hhi = sum((100*caf/caf_sum)^2), 
+                  drink_hhi = sum((100*drink/drink_sum)^2), 
+                  grocery_hhi = sum((100*grocery/grocery_sum)^2),
+                  rest_hhi = sum((100*rest/rest_sum)^2), 
+                  ntrips_hhi = sum((100*ntrips/ntrips_sum)^2)),
+              by = c("household_code", "panel_year")]
+setkeyv(hh_ry, c("household_code", "panel_year"))
+setkeyv(hh_tr_year, c("household_code", "panel_year"))
+hh_tr_year = hh_tr_year[hh_ry]
+rm(hh_ry)
+
 # Income Summary
 hh[,`:=`(inc25 = as.integer(household_income<=13),
          inc40 = as.integer(household_income>=14 & household_income<=17),
@@ -102,7 +128,15 @@ hh[, `:=`(african_american = as.integer(race == 2),
 # TV and Internet
 hh[, `:=`(cable = as.integer(tv_items == 2 | tv_items == 3), 
           internet = as.integer(household_internet_connection == 1))]
+
+# Include additional variables 
+setkeyv(hh, c("household_code", "panel_year"))
+setkeyv(hh_tr_year, c("household_code", "panel_year"))
+hh = hh[hh_tr_year, nomatch=0L]
+htnames = names(hh_tr_year)
 save(hh, file = paste(meta_dir, "/HH-Cleaned.RData", sep=""))
+rm(hh_tr_year)
+gc()
 #---------------------------------------------------------------------------------------------------#
 # Obtain the master list of households who regularly consumers coffee 
 # Identify the first purchase of Keurig/Other Single Serving Coffee
@@ -241,11 +275,12 @@ cols = c("household_code", "panel_year", "projection_factor",
          "head_age_numeric", "presence_of_children",
          "african_american", "hispanic", "cable", "internet",
          "panelist_zip_code", "fips_county_code", "fips_county_descr",
-         "scantrack_market_code", "scantrack_market_descr", "dma_code", "dma_descr")
+         "scantrack_market_code", "scantrack_market_descr", "dma_code", "dma_descr",
+         htnames)
 
 # Encoding and cleaning hh information
 hh = hh[, cols, with=FALSE]
-evars = c("household_code", "panel_year", "projection_factor")
+evars = c("household_code", "panel_year", "projection_factor", htnames)
 lvars = setdiff(cols, evars)
 for (v in lvars){
   setnames(hh, v, "vars")
@@ -263,7 +298,7 @@ hh_list_keurig = hh_list_keurig[hh, nomatch=0L]
 excl_set = c("household_code", "panel_year", "projection_factor",
              "panelist_zip_code", "fips_county_code", "fips_county_descr",
              "scantrack_market_code", "scantrack_market_descr", 
-             "dma_code", "dma_descr")
+             "dma_code", "dma_descr", setdiff(htnames, c("total_spent_hhi", "total_spent")))
 fm = as.formula(paste("days_to_sfirst ~ ", paste(setdiff(cols, excl_set), collapse="+",sep=""), "-1", sep=""))
 X = model.matrix(fm, data=hh_list_keurig[!is.na(days_to_sfirst), ], sparse = TRUE)
 y = model.extract(model.frame(fm, data=hh_list_keurig[!is.na(days_to_sfirst),]), "response")
@@ -471,5 +506,6 @@ hh_info_panel = hh_list[hh, nomatch=0L]
 save(hh_list, hh_info_panel, file = paste(meta_dir, "/HH-Holder-Flags.RData", sep=""))
 
 #Clean up workspace
+rm(trips)
 gc()
 # End of this script -------------------------------------------------------------------#
