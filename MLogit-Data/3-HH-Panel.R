@@ -2,7 +2,7 @@
 # Load appropriate data
 
 # Load HMS Trips 
-load(paste(HMS_trip_dir, "/Trips.RData", sep=""))
+load(paste(meta_dir, "/Trips.RData", sep=""))
 
 # Load Appropriate Auxiliary data sets generated in Price Imputation Algorithm
 load(paste(output_dir, "/Assist_Data_Sets_Retailer_Prices.RData", sep=""))
@@ -12,7 +12,7 @@ load(paste(output_dir, "/Retailer_Price_Panel.RData", sep=""))
 #load(paste(output_dir, "/Retailer_Price_Panel_Region.RData", sep=""))
 
 # Only trips by chosen household
-trips = trips[household_code %in% hh_list[, household_code]]
+trips = trips[household_code %in% hh_list[, household_code], ]
 setkeyv(trips, c("household_code", "purchase_date", "trip_code_uc"))
 
 # Flag trips with coffee purchases.
@@ -39,27 +39,31 @@ date_week_end = unique(purchases[, .(purchase_date, week_end)])
 setkey(date_week_end, purchase_date)
 setkey(trips, purchase_date)
 trips = trips[date_week_end, nomatch=0L]
+gc()
+
+# Aggregate spending to weekly level
+trips[, `:=`(total_spent_week = sum(total_spent), coff = sum(coff), hot = sum(hot), caf = sum(caf), 
+             drink = sum(drink), grocery = sum(grocery), rest = sum(rest)), by = c("household_code", "week_end")]
 
 # Get rid of trips definitely not purchasing coffee based on two criteria
-# (a) Top 85% coffee retailers and purchased coffee there at least once.
+# (a) Top 90% coffee retailers and purchased coffee there at least once.
 # (b) The household purchased coffee at the retailer at least twice
 # (c) The trip doesn't have coffee purchase
 coffee_retailer_95 = unique(retailer_type_sales[cumshare<=0.9501, retailer_code])
-coffee_retailer_85 = unique(retailer_type_sales[cumshare<=0.8501, retailer_code])
+coffee_retailer_90 = unique(retailer_type_sales[cumshare<=0.9001, retailer_code])
 trips[, top_95_retailer:=as.integer(retailer_code %in% coffee_retailer_95)]
-trips[, top_85_retailer:=as.integer(retailer_code %in% coffee_retailer_85)]
+trips[, top_90_retailer:=as.integer(retailer_code %in% coffee_retailer_90)]
 hh_retailers = purchases[, .(npurch = .N), by = c("household_code", "retailer_code")]
 setkeyv(trips, c("household_code", "retailer_code"))
 setkeyv(hh_retailers, c("household_code", "retailer_code"))
 trips = hh_retailers[trips]
 trips[is.na(npurch), npurch:=0]
-trips = trips[as.integer(top_85_retailer)==1 | as.integer(npurch)>=1, ]
-trips[, potential_trip:=as.integer(npurch>=2|(top_85_retailer==1&npurch>=1)|coffee_trip==1)]
+trips = trips[as.integer(top_90_retailer)==1 | as.integer(npurch)>=1, ]
+trips[, potential_trip:=as.integer(npurch>=2|(top_90_retailer==1&npurch>=1)|coffee_trip==1)]
 trips = trips[potential_trip==1, ]
 
 # Obtain the number of coffee purchasing trips made per week
-trips[, `:=`(coffee_purch_trips=sum(coffee_trip)), 
-      by = c("household_code", "week_end")]
+trips[, `:=`(coffee_purch_trips=sum(coffee_trip)), by = c("household_code", "week_end")]
 
 # Keep coffee purchasing trips or trips when no coffee purchase is made
 trips = trips[(coffee_purch_trips>=1&coffee_trip==1)|(coffee_purch_trips==0), ]
@@ -67,35 +71,26 @@ trips = trips[(coffee_purch_trips>=1&coffee_trip==1)|(coffee_purch_trips==0), ]
 # Given the same retailer has similar retailing environment -- 
 # Aggregate non-coffee purchasing trips to week retailer level.
 setkey(trips, household_code, week_end, purchase_date, trip_code_uc, retailer_code)
-trips[, `:=`(retailer_week_ntrip = 1:.N), 
-      by = c("household_code", "week_end", "retailer_code")]
+trips[, `:=`(retailer_week_ntrip = 1:.N), by = c("household_code", "week_end", "retailer_code")]
 trips = trips[retailer_week_ntrip==1|coffee_trip==1, ]
 
 # Define trip filter as coffee purchasing trip or
-# trip to the most often coffee purchase retailer
-trips[, `:=`(max_purch_retailer = as.integer(npurch==max(npurch))), 
+# trip to a random retailer drawn from the multinomial distribution with probability proportional to coffee visits
+trips[, pr_retailer := npurch/sum(npurch), by = c("household_code", "week_end")]
+trips[, `:=`(purch_retailer = as.vector(rmultinom(1, size = 1, prob = pr_retailer))), 
       by = c("household_code", "week_end")]
-trips = trips[max_purch_retailer==1|coffee_trip==1, ]
+trips = trips[purch_retailer==1|coffee_trip==1, ]
 
 # Get rid of unnecessary variables
-trips[, `:=`(potential_trip = NULL, retailer_week_ntrip=NULL, max_purch_retailer=NULL)]
+trips[, `:=`(potential_trip = NULL, retailer_week_ntrip=NULL, purch_retailer=NULL, pr_retailer=NULL)]
 
 # Initialize the purchases panel.
-hh_panel = hh_list[, .(household_code)]
-hh_panel[, dummy:=1]
+hh_panel_year = unique(hh[household_code%in%hh_list$"household_code", 
+                          .(household_code, panel_year, dma_code)])
 panel_year_week = unique(purchases[, .(panel_year, week_end)])
-panel_year_week[, dummy:=1]
-setkey(panel_year_week, dummy)
-setkey(hh_panel, dummy)
-hh_panel = hh_panel[panel_year_week, allow.cartesian=TRUE]
-hh_panel[, dummy:=NULL]
-
-# Obtain the existence of consumers in the panel
-hh_panel_year = unique(hh[, .(household_code, panel_year, dma_code)])
-setkeyv(hh_panel, c("household_code", "panel_year"))
-setkeyv(hh_panel_year, c("household_code", "panel_year"))
-# Only the years the consumers are making purchases matters.
-hh_panel = hh_panel[hh_panel_year, nomatch=0L]
+setkey(panel_year_week, panel_year)
+setkey(hh_panel_year, panel_year)
+hh_panel = hh_panel_year[panel_year_week, allow.cartesian=TRUE]
 setkeyv(hh_panel, c("household_code", "week_end"))
 
 # Merge in trip information
@@ -105,7 +100,7 @@ hh_panel = trips[hh_panel, allow.cartesian=T]
 hh_panel[, `:=`(retailer_trip=ifelse(is.na(coffee_trip), 0, 1), 
                 coffee_purch_trips=ifelse(is.na(coffee_trip), 0, coffee_purch_trips),
                 coffee_trip=ifelse(is.na(coffee_trip), 0, coffee_trip),
-                store_code_uc=NULL, top_95_retailer=NULL, top_85_retailer=NULL,
+                store_code_uc=NULL, top_95_retailer=NULL, top_90_retailer=NULL,
                 store_zip3 = NULL)]
 setkey(hh_panel, household_code, week_end, purchase_date, trip_code_uc)
 hh_panel[, `:=`(norder = 1:.N), by = c("household_code", "week_end")]
@@ -148,12 +143,19 @@ purch_state[, np_hh:=NULL]
 setkey(purch_state, household_code, purchase_date, trip_code_uc)
 purch_state[, `:=`(brand_type_lag = c(NA, brand_type_current[1:(.N-1)]),
                    ptype_lag = c(NA, ptype_current[1:(.N-1)]),
-                   purchase_date_lag = c(NA, purchase_date[1:(.N-1)])), 
+                   purchase_date_lag = c(NA, purchase_date[1:(.N-1)]),
+                   brand_type_lag2 = c(NA, NA, brand_type_current[1:(.N-2)]),
+                   ptype_lag2 = c(NA, NA, ptype_current[1:(.N-2)]),
+                   purchase_date_lag2 = c(NA, NA, purchase_date[1:(.N-2)])), 
             by = c("household_code")]
 purch_state[, `:=`(days_since_last_purch=as.integer(purchase_date-purchase_date_lag),
-                   purchase_date_lag=as.Date(purchase_date_lag, origin="1970-01-01"))]
-purch_state[days_since_last_purch>=367, `:=`(brand_type_lag=NA, purchase_date_lag=NA,
-                                             ptype_lag=NA, days_since_last_purch=NA)]
+                   days_since_last_purch2=as.integer(purchase_date-purchase_date_lag),
+                   purchase_date_lag=as.Date(purchase_date_lag, origin="1970-01-01"),
+                   purchase_date_lag2=as.Date(purchase_date_lag2, origin="1970-01-01"))]
+purch_state[days_since_last_purch>=366, `:=`(brand_type_lag=NA, purchase_date_lag=NA,
+                                             ptype_lag=NA, days_since_last_purch=NA,
+                                             brand_type_lag2=NA, ptype_lag2=NA, 
+                                             purchase_date_lag2=NA, days_since_last_purch2=NA)]
 
 # Set the key for focal purchases to obtain the correct ordering
 setkeyv(purch_state, c("household_code", "week_end", "purchase_date", "trip_code_uc"))

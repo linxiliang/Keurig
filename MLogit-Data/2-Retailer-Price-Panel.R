@@ -254,11 +254,12 @@ setkeyv(dma_prod_temp, c("dma_code", "brand_descr_orig", "keurig", "size1_amount
 setkeyv(retailer_panel_1, c("dma_code", "brand_descr_orig", "keurig", "size1_amount", "ptype", 
                          "roast", "flavored", "kona", "colombian", "sumatra", "wb"))
 retailer_panel_1 = dma_prod_temp[retailer_panel_1, nomatch=0L]
-setkeyv(retailer_panel_1, c("dma_code", "retailer_code", "week_end", "brand_descr_orig", "keurig", "size1_amount",
-                            "flavored", "kona", "colombian", "sumatra", "wb"))
 
 # Generate month variable
 retailer_panel_1[, month:=substr(as.character(week_end), 1, 7)]
+retailer_panel_1[, brand_descr:=ifelse(brand_descr_orig%in%selected_brand_list, brand_descr_orig, "OTHER")]
+setkeyv(retailer_panel_1, c("dma_code", "retailer_code", "week_end", "brand_descr", "keurig", "size1_amount",
+                            "flavored", "kona", "colombian", "sumatra", "wb"))
 
 # Check whether every retailers is operating for every week
 unique(retailer_panel_1[, .(dma_code, retailer_code, week_end)])[, .N, by = c("dma_code", "retailer_code")][N<313, ]
@@ -492,16 +493,19 @@ products[, keurig:=as.integer(ptype=="KEURIG")]
 move = move[products[,.(upc_num, upc, upc_ver_uc, brand_descr, keurig, size1_amount,
                         ptype, roast, flavored, kona, colombian, sumatra, wb)], nomatch=0L]
 move[, upc_num:=NULL]
+gc()
 
-move[, brand_descr := ifelse(brand_descr%in%selected_brand_list, brand_descr, "OTHER")]
 move = move[, .(rms_price = mean(imputed_price, na.rm=T), rms_units = sum(units, na.rm=T), 
                 rms_revenue = sum(imputed_price*units, na.rm=T)),
             by = c("dma_code", "retailer_code", "week_end", "brand_descr", "keurig", "size1_amount",
                    "ptype", "roast", "flavored", "kona", "colombian", "sumatra", "wb")]
+move[, brand_descr_orig := brand_descr]
+move[, brand_descr := ifelse(brand_descr%in%selected_brand_list, brand_descr, "OTHER")]
+
 # Merge with original panel, and check the prices.
-setkeyv(move, c("dma_code", "retailer_code", "week_end", "brand_descr", "keurig", "size1_amount",
+setkeyv(move, c("dma_code", "retailer_code", "week_end", "brand_descr_orig", "keurig", "size1_amount",
                 "ptype", "roast", "flavored", "kona", "colombian", "sumatra", "wb"))
-setkeyv(retailer_panel_1, c("dma_code", "retailer_code", "week_end", "brand_descr", "keurig", "size1_amount",
+setkeyv(retailer_panel_1, c("dma_code", "retailer_code", "week_end", "brand_descr_orig", "keurig", "size1_amount",
                             "ptype", "roast", "flavored", "kona", "colombian", "sumatra", "wb"))
 move[retailer_panel_1][retailer_code==6901, cor(price, rms_price, use="pairwise.complete.obs")]
 save(move, file = paste(output_dir, "/RMS_Imputed_Prices.RData", sep=""))
@@ -519,7 +523,7 @@ move = move[retailer_code %in% rms_retailer_list[, retailer_code], ]
 move[, `:=`(price=rms_price, rms_price=NULL, rms_units=NULL, rms_revenue=NULL)]
 retailer_panel_1[, `:=`(natl_price_avg=NULL, natl_price_mid=NULL, region_price_avg=NULL, region_price_mid=NULL,
                         price_avg=NULL, price_mid=NULL, month=NULL, mprice=NULL, revenue=NULL, 
-                        first_week_end=NULL, last_week_end=NULL, quantity=NULL)]
+                        first_week_end=NULL, last_week_end=NULL, quantity=NULL, channel_type=NULL)]
 setcolorder(retailer_panel_1, names(move))
 move[, in_rms:=1]
 retailer_panel_1[, in_rms:=0]
@@ -527,7 +531,8 @@ retailer_panel = rbindlist(list(move, retailer_panel_1[!(retailer_code %in% rms_
 
 # Add no purchase option to the retailer panel
 retailer_panel_no_purch = unique(retailer_panel[, .(dma_code, retailer_code, week_end, in_rms)])
-retailer_panel_no_purch[, `:=`(brand_descr="0NOTHING", keurig=0, size1_amount=0, roast=0, flavored=0,
+retailer_panel_no_purch[, `:=`(brand_descr="0NOTHING", brand_descr_orig="0NOTHING",
+                               keurig=0, size1_amount=0, roast=0, flavored=0,
                                kona=0, colombian=0, sumatra=0, wb=0, price=0, ptype = "OTHER")]
 setcolorder(retailer_panel_no_purch, names(retailer_panel))
 retailer_panel = rbindlist(list(retailer_panel, retailer_panel_no_purch))

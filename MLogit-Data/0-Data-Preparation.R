@@ -73,7 +73,7 @@ cl = makeCluster(cores)
 invisible(clusterEvalQ(cl,library(data.table)))
 invisible(clusterEvalQ(cl, setNumericRounding(0)))
 invisible(clusterEvalQ(cl,library(nleqslv)))
-
+set.seed(12132131)
 #---------------------------------------------------------------------------------------------------#
 # Run the appropriate scripts.
 
