@@ -196,7 +196,7 @@ purch_state = cbind(purch_state, state_list)
 rm(state_list)
 
 # Change brand_descr current
-purch_state[, `:=`(cum_temp=ifelse(n_brand>=2, 0, ifelse(brand_type_current == brand_type_lag, 
+purch_state[, `:=`(cum_temp=ifelse(n_brand>=2, 0, ifelse(brand_type_current %in% brand_type_lag, 
                                                          units+brand_cum, units)))]
 # Match hh_panel and focal_purch, and roll states 
 setkey(hh_panel, household_code, week_end, purchase_date, trip_code_uc)
@@ -206,21 +206,34 @@ setkey(hh_panel, trip_code_uc)
 purch_state = purch_state[hh_panel[,.(trip_code_uc, temp_id)], nomatch=0L]
 setkey(purch_state, household_code, temp_id)
 setkey(hh_panel, household_code, temp_id)
+
 # Match panel with purchases
 hh_panel = purch_state[,.(household_code, temp_id, brand_type_lag, purchase_date_lag, 
-                           ptype_lag, brand_cum)][hh_panel, roll = -Inf, rollends = c(T, F)]
+                          ptype_lag, brand_type_lag2, purchase_date_lag2, 
+                          ptype_lag2, brand_cum)][hh_panel, roll = -Inf, rollends = c(T, F)]
+setnames(purch_state, c("brand_type_lag", "purchase_date_lag", "ptype_lag"), 
+         c("brand_type_lagx", "purchase_date_lagx", "ptype_lagx"))
 hh_panel = purch_state[,.(household_code, temp_id, brand_type_current, purchase_date, 
-                           ptype_current, cum_temp)][hh_panel, roll = Inf, rollends = c(F, T)]
+                          ptype_current, brand_type_lagx, purchase_date_lagx, 
+                          ptype_lagx, cum_temp)][hh_panel, roll = Inf, rollends = c(F, T)]
 hh_panel = purch_state[,.(household_code, temp_id, units)][hh_panel]
 
+hh_panel[is.na(brand_type_lag2), `:=`(brand_type_lag2 = brand_type_lagx, 
+                                      ptype_lag2 = ptype_lagx, 
+                                      purchase_date_lag2 = purchase_date_lagx)]
 hh_panel[is.na(brand_type_lag), `:=`(brand_type_lag = brand_type_current, 
                                      ptype_lag = ptype_current, 
-                                     brand_cum = cum_temp,
+                                     brand_cum = cum_temp, 
                                      purchase_date_lag = purchase_date)]
+
 hh_panel[, `:=`(days_to_last_purch=ifelse(is.na(i.purchase_date), week_end-purchase_date_lag, 
                                           i.purchase_date-purchase_date_lag),
+                days_to_last_purch2=ifelse(is.na(i.purchase_date), week_end-purchase_date_lag2, 
+                                          i.purchase_date-purchase_date_lag2),
                 purchase_date = i.purchase_date, i.purchase_date=NULL, brand_type_current=NULL,
-                ptype_current=NULL, cum_temp=NULL, temp_id=NULL, units=ifelse(is.na(units),0,units))]
+                ptype_current=NULL, cum_temp=NULL, temp_id=NULL, 
+                brand_type_lagx=NULL, ptype_lagx=NULL, purchase_date_lagx=NULL, 
+                units=ifelse(is.na(units),0,units))]
 
 #---------------------------------------------------------------------------------------------------#
 # Impute the inventory
