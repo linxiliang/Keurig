@@ -25,20 +25,20 @@ year_threshold = 2006
 # (ii) Obtain average price weighted by these sales
 retailer_panel = retailer_panel[price>0.10, ] # Price below likely to be error
 prod_weights = purchases[, .(hms_revenue = sum(total_price_paid)), 
-                         by = c("brand_descr", "ptype", "keurig", "roast", "size1_amount",
+                         by = c("brand_descr_orig", "ptype", "keurig", "roast", "size1_amount",
                                 "flavored", "kona", "colombian", "sumatra", "wb")]
-setkeyv(prod_weights, c("brand_descr", "ptype", "keurig", "roast", "size1_amount",
+setkeyv(prod_weights, c("brand_descr_orig", "ptype", "keurig", "roast", "size1_amount",
                         "flavored", "kona", "colombian", "sumatra", "wb"))
-setkeyv(retailer_panel, c("brand_descr", "ptype", "keurig", "roast", "size1_amount",
+setkeyv(retailer_panel, c("brand_descr_orig", "ptype", "keurig", "roast", "size1_amount",
                           "flavored", "kona", "colombian", "sumatra", "wb"))
 retailer_panel = retailer_panel[prod_weights, nomatch=0L]
 retailer_panel[, price:=price/size1_amount] # Normalize all prices to per serving
 retailer_panel = retailer_panel[, .(price = sum(price*hms_revenue)/sum(hms_revenue)),
-                                by = c("dma_code", "retailer_code", "week_end", "brand_descr",
+                                by = c("dma_code", "retailer_code", "week_end", "brand_descr_orig",
                                        "ptype", "keurig", "roast", "flavored", "kona",
                                        "colombian", "sumatra", "wb", "in_rms")]
-
 save(retailer_panel, file = paste(output_dir, "/Retailer_Brand_Price_Panel.RData", sep=""))
+
 # Now contrain panel to trips with valid lags and year threshold 
 hh_panel = hh_panel[panel_year>=year_threshold & !is.na(brand_type_lag), ]
 
@@ -69,9 +69,9 @@ focal_purch=focal_purch[, .(total_price_paid = sum(total_price_paid),
                                "roast", "flavored", "kona", "colombian", "sumatra", "wb")]
 
 # Merge in the purchase data to locate the purchased product
-setkey(focal_purch, trip_code_uc, brand_descr, keurig, ptype, 
+setkey(focal_purch, trip_code_uc, brand_descr, brand_descr_orig, keurig, ptype, 
        roast, flavored, kona, colombian, sumatra, wb)
-setkey(hh_market_prod, trip_code_uc, brand_descr, keurig, ptype, 
+setkey(hh_market_prod, trip_code_uc, brand_descr, brand_descr_orig, keurig, ptype, 
        roast, flavored, kona, colombian, sumatra, wb)
 hh_market_prod = focal_purch[, .(trip_code_uc, brand_descr, brand_descr_orig, keurig, ptype,
                                  roast, flavored, kona, colombian, sumatra, wb, size,
@@ -86,7 +86,7 @@ hh_market_prod = hh_market_prod[ptype%in%c("KEURIG","OTHER"), ]
 # which is not realistic
 # So, I drop all brands below 90th percentile in ground coffee
 brand_size_type_sales = purchases[, .(revenue = sum(total_price_paid-coupon_value)), 
-                                  by = c("dma_code", "ptype", "keurig", "brand_descr", "roast", 
+                                  by = c("dma_code", "ptype", "keurig", "brand_descr_orig", "roast", 
                                          "flavored", "kona", "colombian", "sumatra", "wb")]
 brand_size_type_sales[, rshare:=revenue/sum(revenue), by=c("dma_code", "ptype", "keurig")]
 brand_size_type_sales = brand_size_type_sales[order(-rshare), ]
@@ -95,9 +95,9 @@ brand_size_type_sales[, rcumshare:=cumsum(rshare), by=c("dma_code", "ptype", "ke
 brand_size_type_sales[, rcumshare:=rcumshare-rshare]
 
 # Merge the criteria into the hh_market_prod
-setkeyv(brand_size_type_sales, c("dma_code", "ptype", "keurig", "brand_descr", "roast", 
+setkeyv(brand_size_type_sales, c("dma_code", "ptype", "keurig", "brand_descr_orig", "roast", 
                                  "flavored", "kona", "colombian", "sumatra", "wb"))
-setkeyv(hh_market_prod, c("dma_code", "ptype", "keurig", "brand_descr", "roast", 
+setkeyv(hh_market_prod, c("dma_code", "ptype", "keurig", "brand_descr_orig", "roast", 
                           "flavored", "kona", "colombian", "sumatra", "wb"))
 hh_market_prod = brand_size_type_sales[hh_market_prod]
 hh_market_prod = hh_market_prod[rcumshare<=0.85|keurig==1, ]
@@ -122,8 +122,8 @@ hh_market_prod = hh_market_prod[as.integer(npurch)>=3, ]
 hh_market_prod[, `:=`(total_spent = mean(total_spent, na.rm=TRUE)), by = "trip_code_uc"]
 
 # Modify brand_descr to take into account private label issues -- two private may not be the same
-hh_market_prod[brand_descr=="CTL BR", brand_type := paste(brand_descr, retailer_code, sep="_")]
-hh_market_prod[brand_descr!="CTL BR", brand_type := brand_descr]
+hh_market_prod[brand_descr_orig=="CTL BR", brand_type := paste(brand_descr_orig, retailer_code, sep="_")]
+hh_market_prod[brand_descr_orig!="CTL BR", brand_type := brand_descr_orig]
 hh_market_prod[, `:=`(brand_type = paste(brand_type, ptype, sep = "_"), nobs = 1:.N)]
 hh_market_prod[, is_lag := as.integer(grepl(brand_type, brand_type_lag)), by = "nobs"]
 

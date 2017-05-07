@@ -355,16 +355,12 @@ gc()
 
 setkeyv(hh_panel, c("household_code", "week_end", "norder"))
 save(hh_panel, focal_purch, hh_rate, file = paste(output_dir, "/hh_trip_panel.RData", sep=""))
-stopxxx
+
 #---------------------------------------------------------------------------------------------------#
 # Restrict household panel to purchases made on 2006 or later
 # and get rid of observations where the last brand is not observed -- 
 # not dealing with initial condition for now.
 hh_panel = hh_panel[panel_year>=year_threshold & !is.na(brand_type_lag), ]
-
-# Get rid of variables not needed for now.
-hh_panel = hh_panel[, .(dma_code, retailer_code, household_code, kholding, week_end, panel_year, norder, trip_code_uc, 
-                        coffee_trip, brand_type_lag, brand_cum, ptype_lag, inv_all, inv_type, inv_brand_type)]
 
 # Now use the trip data to create purchase panel for mixed logit demand estimation
 # Constrain both to be in the top DMAs
@@ -380,42 +376,47 @@ setkeyv(retailer_panel, c("dma_code", "retailer_code", "week_end"))
 # consumer's consumption set.
 # Then, product is retained if it meets either of the above criteria or chosen at the choice occasion. 
 brand_size_type_sales = purchases[, .(revenue = sum(total_price_paid-coupon_value)), 
-                                  by = c("dma_code", "ptype", "keurig", "brand_descr", "size1_amount",
+                                  by = c("dma_code", "ptype", "keurig", "brand_descr_orig", "size1_amount",
                                          "roast", "flavored", "kona", "colombian", "sumatra", "wb")]
 brand_size_type_sales[, rshare:=revenue/sum(revenue), by=c("dma_code", "ptype", "keurig")]
 brand_size_type_sales = brand_size_type_sales[order(-rshare), ]
 setkeyv(brand_size_type_sales, c("dma_code", "ptype", "keurig"))
 brand_size_type_sales[, rcumshare:=cumsum(rshare), by=c("dma_code", "ptype", "keurig")]
 brand_size_type_sales[, rcumshare:=rcumshare-rshare]
-brand_size_type_sales=brand_size_type_sales[rcumshare<=0.8, .(dma_code, ptype, keurig, brand_descr, size1_amount, 
+brand_size_type_sales=brand_size_type_sales[rcumshare<=0.8, .(dma_code, ptype, keurig, brand_descr_orig, size1_amount, 
                                                               roast, flavored, kona, colombian, sumatra, wb, rshare)]
 hh_brand_size_sales = purchases[, .(revenue = sum(total_price_paid-coupon_value)), 
-                                by = c("household_code", "ptype", "keurig", "brand_descr", "size1_amount",
+                                by = c("household_code", "ptype", "keurig", "brand_descr_orig", "size1_amount",
                                        "roast", "flavored", "kona", "colombian", "sumatra", "wb")]
 hh_brand_size_sales[, rshare:=revenue/sum(revenue), by=c("household_code", "keurig")]
 hh_brand_size_sales = hh_brand_size_sales[order(-rshare), ]
 setkeyv(hh_brand_size_sales, c("household_code", "ptype", "keurig"))
 hh_brand_size_sales[, rcumshare:=cumsum(rshare), by=c("household_code", "ptype", "keurig")]
 hh_brand_size_sales[, rcumshare:=rcumshare-rshare]
-hh_brand_size_sales=hh_brand_size_sales[rcumshare<=0.95, .(household_code, ptype, keurig, brand_descr, size1_amount, 
+hh_brand_size_sales=hh_brand_size_sales[rcumshare<=0.95, .(household_code, ptype, keurig, brand_descr_orig, size1_amount, 
                                                            roast, flavored, kona, colombian, sumatra, wb, rshare)]
 
 # Loop over year to create panel -- this is to avoid memory overloading
 year_list = hh_panel[, unique(panel_year)]
-hh_prod_panel = data.table(NULL)
+hh_prod_panel = as.list(year_list)
+k=0
 for (yr in year_list){
-  hh_year = hh_panel[panel_year==yr, ]
+  k = k+1
+  hh_year = hh_panel[panel_year==yr, .(dma_code, retailer_code, household_code, kholding, week_end, panel_year, 
+                                       norder, trip_code_uc, coffee_trip, grocery, total_spent_week,
+                                       brand_type_lag, brand_cum, ptype_lag, brand_type_lag2, ptype_lag2, 
+                                       inv_all, inv_type, inv_brand_type)]
   hh_prod_temp = hh_year[retailer_panel, allow.cartesian=TRUE, nomatch=0L]
 
   # Get rid of Keurig products when the consumer doesn't hold keurig machine
   hh_prod_temp = hh_prod_temp[kholding==1 | (kholding == 0 & keurig == 0), ]
   
   # Merge in the purchase data to locate the purchased product
-  setkey(focal_purch, trip_code_uc, brand_descr, keurig, ptype, size1_amount, 
+  setkey(focal_purch, trip_code_uc, brand_descr_orig, keurig, ptype, size1_amount, 
          roast, flavored, kona, colombian, sumatra, wb)
-  setkey(hh_prod_temp, trip_code_uc, brand_descr, keurig, ptype, size1_amount, 
+  setkey(hh_prod_temp, trip_code_uc, brand_descr_orig, keurig, ptype, size1_amount, 
          roast, flavored, kona, colombian, sumatra, wb)
-  hh_prod_temp = focal_purch[, .(trip_code_uc, brand_descr, brand_descr_orig, keurig, ptype, 
+  hh_prod_temp = focal_purch[, .(trip_code_uc, brand_descr_orig, keurig, ptype, 
                                  size1_amount, roast, flavored, kona, colombian, sumatra, wb,
                                  quantity, total_price_paid, coupon_value)][hh_prod_temp]
   hh_prod_temp[is.na(quantity), quantity := 0]
@@ -427,14 +428,14 @@ for (yr in year_list){
   
   # Merge the criteria into the hh_prod_temp
   onames = names(hh_prod_temp)
-  setkeyv(brand_size_type_sales, c("dma_code", "ptype", "keurig", "brand_descr", "size1_amount",
+  setkeyv(brand_size_type_sales, c("dma_code", "ptype", "keurig", "brand_descr_orig", "size1_amount",
                                    "roast", "flavored", "kona", "colombian", "sumatra", "wb"))
-  setkeyv(hh_prod_temp, c("dma_code", "ptype", "keurig", "brand_descr", "size1_amount", 
+  setkeyv(hh_prod_temp, c("dma_code", "ptype", "keurig", "brand_descr_orig", "size1_amount", 
                           "roast", "flavored", "kona", "colombian", "sumatra", "wb"))
   hh_prod_temp = brand_size_type_sales[hh_prod_temp]
-  setkeyv(hh_brand_size_sales, c("household_code", "ptype", "keurig", "brand_descr", "size1_amount",  
+  setkeyv(hh_brand_size_sales, c("household_code", "ptype", "keurig", "brand_descr_orig", "size1_amount",  
                                  "roast", "flavored", "kona", "colombian", "sumatra", "wb"))
-  setkeyv(hh_prod_temp, c("household_code", "ptype", "keurig", "brand_descr", "size1_amount", 
+  setkeyv(hh_prod_temp, c("household_code", "ptype", "keurig", "brand_descr_orig", "size1_amount", 
                           "roast", "flavored", "kona", "colombian", "sumatra", "wb"))
   hh_prod_temp = hh_brand_size_sales[hh_prod_temp]
   hh_prod_temp = hh_prod_temp[!is.na(rshare) | !is.na(i.rshare) | as.integer(quantity)>=1 | brand_descr=="0NOTHING", ]
@@ -442,17 +443,20 @@ for (yr in year_list){
   setcolorder(hh_prod_temp, onames)
   
   gc()
-  hh_prod_panel = rbindlist(list(hh_prod_panel, hh_prod_temp))
+  hh_prod_panel[[k]] = hh_prod_temp
   cat("Panel year", yr, "Completed!\n\n")
 }
+hh_prod_panel = rbindlist(hh_prod_panel)
+gc()
 
 # Get rid of households having less than 10 choice occassions, very small amount of data
 hh_prod_panel[, sum_quantity:=sum(quantity), by ="household_code"]
 hh_prod_panel = hh_prod_panel[sum_quantity>=10, ]
 hh_prod_panel[, sum_quantity:=NULL]
+gc()
 
 # Save the panel
-setkeyv(hh_prod_panel, c("household_code", "week_end", "norder", "trip_code_uc", "brand_descr", "keurig", 
+setkeyv(hh_prod_panel, c("household_code", "week_end", "norder", "trip_code_uc", "brand_descr_orig", "keurig", 
                          "size1_amount", "roast", "flavored", "kona", "colombian", "sumatra", "wb"))
 save(hh_prod_panel, hh_rate, top_dma_list, top_keurig_brands, 
      file = paste(output_dir, "/hh_product_panel.RData", sep=""))
