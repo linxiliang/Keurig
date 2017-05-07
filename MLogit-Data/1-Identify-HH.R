@@ -446,8 +446,8 @@ setkey(hh_list, household_code)
 hh_list = hh_list[hh_wks, nomatch=0L]
 
 # Get average consumption per-week
-hh_list[, `:=`(brate = bquantity/bweeks,
-               arate = aquantity/aweeks,
+hh_list[, `:=`(brate = ifelse(bweeks==0 | is.na(bweeks), NA, bquantity/bweeks),
+               arate = ifelse(aweeks==0 | is.na(aweeks), NA, aquantity/aweeks),
                overall_rate = rowSums(cbind(bquantity, aquantity), na.rm=TRUE)/(aweeks+bweeks))]
 
 # The household has to make at least 2 purchases annually to be counted, 

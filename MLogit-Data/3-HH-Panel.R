@@ -260,7 +260,7 @@ setkey(hh_rate, household_code, purchase_date)
 hh_rate[, next_purch_date:=c(purchase_date[2:length(ptype)], as.Date(NA)), by = c("household_code")]
 hh_rate[, `:=`(periods=as.integer(next_purch_date-purchase_date)/7)]
 # Ignore the ones that are over a year... Probably measurement error, or the household doesn't exist in that period
-hh_rate = hh_rate[periods<=26, .(quantity = sum(quantity), periods = sum(periods), cases = .N),
+hh_rate = hh_rate[periods<=52, .(quantity = sum(quantity), periods = sum(periods), cases = .N),
                   by = c("household_code", "ptype")]
 hh_rate[, crate := quantity/periods]
 hh_rate = hh_rate[cases>=3, ] # Not reliable if less than 3.
@@ -270,18 +270,20 @@ setkey(hh_rate, household_code, ptype_lag)
 # Merge in consumption rate, adoption date, and other information
 setkey(hh_inventory, household_code)
 setkey(hh_list, household_code)
-hh_inventory = hh_inventory[hh_list[, .(household_code, k_first_week_end, brate, arate, overall_rate)], nomatch=0L]
-hh_inventory[is.na(ptype_lag) & week_end>=k_first_week_end, ptype_lag:="KEURIG"]
-hh_inventory[is.na(ptype_lag) & is.na(k_first_week_end), ptype_lag:="OTHER"]
-hh_inventory[is.na(ptype_lag) & week_end<k_first_week_end, ptype_lag:="OTHER"]
+hh_inventory = hh_inventory[hh_list[, .(household_code, k_first_week, brate, arate, overall_rate)], nomatch=0L]
+hh_inventory[is.na(ptype_lag) & week_end>=k_first_week, ptype_lag:="KEURIG"]
+hh_inventory[is.na(ptype_lag) & is.na(k_first_week), ptype_lag:="OTHER"]
+hh_inventory[is.na(ptype_lag) & week_end<k_first_week, ptype_lag:="OTHER"]
 setkey(hh_rate, household_code, ptype_lag)
 setkey(hh_inventory, household_code, ptype_lag)
 hh_inventory = hh_rate[,.(household_code, ptype_lag, crate)][hh_inventory]
-hh_inventory[is.na(crate) & week_end>=k_first_week_end, crate:=arate]
-hh_inventory[is.na(crate) & is.na(k_first_week_end), crate:=brate]
-hh_inventory[is.na(crate) & week_end<k_first_week_end, crate:=brate]
+hh_inventory[is.na(crate) & week_end>=k_first_week, crate:=arate]
+hh_inventory[is.na(crate) & is.na(k_first_week), crate:=brate]
+hh_inventory[is.na(crate) & week_end<k_first_week, crate:=brate]
 # First recorded purchase is a keurig, and flagged as keurig rate!
-hh_inventory[is.na(crate) & !is.na(arate), `:=`(crate=arate, ptype_lag="KEURIG")] 
+hh_inventory[is.na(crate) & !is.na(arate), `:=`(crate=arate, ptype_lag="KEURIG")]
+# Only see Keurig machine adoption, no K-Cup purchases
+hh_inventory[is.na(crate) & is.na(arate), `:=`(crate=brate, ptype_lag="OTHER")]
 
 # Create lag periods for testing absence from the panel
 setkeyv(hh_inventory, c("household_code", "week_end"))
@@ -342,10 +344,10 @@ hh_panel = hh_panel[hh_inventory, nomatch=0L]
 
 # Merge in machine holding status in this panel
 setkey(hh_panel, household_code)
-onames = c(names(hh_panel), "k_first_week_end")
-hh_panel = hh_list[, .(household_code, k_first_week_end)][hh_panel]
-hh_panel[, kholding:= as.integer(week_end>=k_first_week_end)]
-hh_panel[is.na(k_first_week_end), kholding:=0]
+onames = c(names(hh_panel), "k_first_week")
+hh_panel = hh_list[, .(household_code, k_first_week)][hh_panel]
+hh_panel[, kholding:= as.integer(week_end>=k_first_week)]
+hh_panel[is.na(k_first_week), kholding:=0]
 
 # Remove unneeded data sets and clear ram
 rm(trips)
