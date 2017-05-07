@@ -277,13 +277,13 @@ hh_inventory[is.na(ptype_lag) & week_end<k_first_week, ptype_lag:="OTHER"]
 setkey(hh_rate, household_code, ptype_lag)
 setkey(hh_inventory, household_code, ptype_lag)
 hh_inventory = hh_rate[,.(household_code, ptype_lag, crate)][hh_inventory]
-hh_inventory[is.na(crate) & week_end>=k_first_week, crate:=arate]
-hh_inventory[is.na(crate) & is.na(k_first_week), crate:=brate]
-hh_inventory[is.na(crate) & week_end<k_first_week, crate:=brate]
+hh_inventory[week_end>=k_first_week, crate:=arate]
+hh_inventory[is.na(k_first_week), crate:=brate]
+hh_inventory[week_end<k_first_week, crate:=brate]
 # First recorded purchase is a keurig, and flagged as keurig rate!
-hh_inventory[is.na(crate) & !is.na(arate), `:=`(crate=arate, ptype_lag="KEURIG")]
+hh_inventory[is.na(crate) & !is.na(arate), `:=`(crate=overall_rate, ptype_lag="KEURIG")]
 # Only see Keurig machine adoption, no K-Cup purchases
-hh_inventory[is.na(crate) & is.na(arate), `:=`(crate=brate, ptype_lag="OTHER")]
+hh_inventory[is.na(crate) & is.na(arate), `:=`(crate=overall_rate, ptype_lag="OTHER")]
 
 # Create lag periods for testing absence from the panel
 setkeyv(hh_inventory, c("household_code", "week_end"))
