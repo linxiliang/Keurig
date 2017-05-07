@@ -26,7 +26,7 @@ maker_modules       = 7755
 ground_only = TRUE # Only purchases in ground coffee category will be considered. 
 
 # Burnin period
-burnindays = 45 # The number of days for burnin for identification of hardware adoption. 
+burnindays = 60 # The number of days for burnin for identification of hardware adoption. 
                 # Inclusive of 0s, it is about 80th percentile.
 
 # Platform which I would to impute data
@@ -76,6 +76,9 @@ invisible(clusterEvalQ(cl,library(nleqslv)))
 set.seed(12132131)
 #---------------------------------------------------------------------------------------------------#
 # Run the appropriate scripts.
+
+# Give date - generate weekend, ending on saturday
+wkend <- function(x) x + 7 - wday(x) 
 
 # Identify the first purchase of Keurig/Other Single Serving Coffee
 # Flag consumers appropriately.

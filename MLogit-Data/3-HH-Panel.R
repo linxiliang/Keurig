@@ -256,6 +256,7 @@ hh_rate[, norder:=1:.N, by = c("household_code", "purchase_date")] # Ignore case
 hh_rate = hh_rate[as.integer(norder)==1, ]
 hh_rate[, norder:=.N, by = c("household_code")] 
 hh_rate = hh_rate[norder!=1, ] # Ignore households with one purchase
+setkey(hh_rate, household_code, purchase_date)
 hh_rate[, next_purch_date:=c(purchase_date[2:length(ptype)], as.Date(NA)), by = c("household_code")]
 hh_rate[, `:=`(periods=as.integer(next_purch_date-purchase_date)/7)]
 # Ignore the ones that are over a year... Probably measurement error, or the household doesn't exist in that period
@@ -352,7 +353,7 @@ gc()
 
 setkeyv(hh_panel, c("household_code", "week_end", "norder"))
 save(hh_panel, focal_purch, hh_rate, file = paste(output_dir, "/hh_trip_panel.RData", sep=""))
-
+stopxxx
 #---------------------------------------------------------------------------------------------------#
 # Restrict household panel to purchases made on 2006 or later
 # and get rid of observations where the last brand is not observed -- 

@@ -38,15 +38,14 @@ hh[, projection_factor:=projection_factor/10000]
 # Make purchases trip, product unique
 pnamelist = names(purchases)
 pnamelist = setdiff(pnamelist, c("total_spent", "total_price_paid", "coupon_value", "deal_flag_uc","quantity"))
-purchases = purchases[, .(total_price_paid = sum(total_price_paid),
-                          coupon_value = sum(coupon_value),
+purchases = purchases[, .(total_price_paid = sum(total_price_paid), coupon_value = sum(coupon_value),
                           quantity = sum(quantity)), by = pnamelist]
 setkeyv(purchases, c("upc", "upc_ver_uc"))
 
 # Merge in the type information to the purchase data
 purchases=purchases[products[, .(upc, upc_ver_uc, ptype, pthird, brand_descr, 
                                  size1_amount, multi, series)], nomatch=0L]
-purchases[, month:=as.factor(format(purchase_date, '%Y-%m'))]
+purchases[, month_var:=as.factor(format(purchase_date, '%Y-%m'))]
 
 # Only Purchases Beyond 2008 matters 
 # purchases = purchases[panel_year>=2008, ]
@@ -150,7 +149,8 @@ if (ground_only){
 }
 
 # Obtain the number of purchases made in each model, and the series of Keurig purchased if any. 
-hh_list = purchases[, .(nptype=.N, series = series[1], panel_year = panel_year[1]), 
+hh_list = purchases[, .(nptype=.N, series = series[1], panel_year = panel_year[1],
+                        purchase_date=purchase_date[1]), 
                     by = c("household_code", "ptype", "product_module_code")]
 
 # Flag households with hardware purchases by type
@@ -161,10 +161,10 @@ hh_list[product_module_code %in% coffee_modules, sware:=as.numeric(nptype>=1)]
 hh_list[product_module_code %in% maker_modules, sware:=0]
 
 # Flag both hardware and software users by platform type
-hh_list = hh_list[, .(hware = as.integer(any(hware==1)),
-                      sware = as.integer(any(sware==1)),
-                      hsholders = as.integer(any(hware==1)&any(sware==1)),
-                      hseries = mean(series, na.rm=TRUE)), 
+hh_list = hh_list[, .(hware = as.integer(sum(hware)),
+                      sware = as.integer(sum(sware)),
+                      hsholders = as.integer((sum(hware)>=1)&(sum(sware)>=1)),
+                      hseries = as.integer(mean(series, na.rm=TRUE))), 
                   by = c("household_code", "ptype")]
 hh_list[is.na(hseries), hseries:=0]
 
@@ -173,7 +173,6 @@ hh_list[is.na(hseries), hseries:=0]
 setkeyv(hh_list, c("household_code", "ptype"))
 setkeyv(purchases, c("household_code", "ptype"))
 purch_temp = hh_list[purchases, nomatch = 0L]
-purch_temp = purch_temp[as.integer(sware)==1 | as.integer(hsholders)==1, ]
 maxdate = as.Date(max(purch_temp[, purchase_date]) + 1)
 mindate = as.Date(min(purch_temp[, purchase_date]) - 1)
 purch_temp[, date_temp1 := as.Date(ifelse(product_module_code %in% maker_modules, 
@@ -206,7 +205,6 @@ hh_date[, `:=`(hlast_date = as.Date(ifelse(hlast_date==mindate, NA, hlast_date),
 setkeyv(hh_date, c("household_code", "ptype"))
 
 # Merge date and purchase occasion information back to hh_list
-# About 800 households with only hardware purchases are dropped
 hh_list = hh_list[hh_date, nomatch=0L] 
 
 # Break dataset into three parts, and merge into one data set
@@ -215,7 +213,7 @@ hh_list_keurig = hh_list[ptype=="KEURIG", ]
 hh_list_prior = hh_list[ptype!="KEURIG" & ptype!="OTHER", ]
 
 # Generate the first date of prior machine holding
-hh_list_prior = hh_list_prior[sn>=2 & as.integer(slast_date - sfirst_date)>=30, ]
+# hh_list_prior = hh_list_prior[sn>=2 & as.integer(slast_date - sfirst_date)>=30, ]
 hh_list_prior[, `:=`(first_date_temp = pmin(sfirst_date, hfirst_date, na.rm=TRUE),
                      last_date_temp = pmax(slast_date, hlast_date, na.rm=TRUE))]
 hh_list_prior = hh_list_prior[, .(prior_first_date = min(first_date_temp), 
@@ -224,8 +222,10 @@ hh_list_prior = hh_list_prior[, .(prior_first_date = min(first_date_temp),
                                   prior_holder = 1), by = "household_code"]
 
 # Generate the first date of Keurig machine holding status
-hh_list_keurig = hh_list_keurig[sn>=2 & as.integer(slast_date-sfirst_date)>=30, ]
-hh_list_keurig[, `:=`(kholder = 1, ptype = NULL, sware=NULL, hsholders=NULL)]
+# Two purchases of software (on different days) or hardware purchases.
+# hh_list_keurig = hh_list_keurig[sn>=2 & as.integer(slast_date-sfirst_date)>=30, ]
+hh_list_keurig[, `:=`(kholder = as.integer((sn>=2&sfirst_date<(slast_date+7))|hn>=1), 
+                      ptype = NULL, sware=NULL, hsholders=NULL)]
 
 # Only keep the variables needed for household consuming ground coffee. 
 hh_list_other = hh_list_other[, .(household_code, gfirst_date = sfirst_date, glast_date = slast_date, gsn = sn)]
@@ -251,6 +251,8 @@ hh_list[is.na(kholder), kholder:=0]
 hh_list[is.na(gsn), gsn:=0]
 hh_list[is.na(prior_sn), prior_sn:=0]
 hh_list[is.na(prior_holder), prior_holder:=0]
+# Remove if not keurig adopter and not observed to purchase ground coffee
+hh_list = hh_list[!(hn==0&sn<=1&gsn==0), ]
 
 # Flag panel_year as the year the first time the individual is observed to make a software purchase
 hh_list_keurig[, days_to_sfirst:=as.numeric(sfirst_date - hfirst_date)]
@@ -259,12 +261,14 @@ hh_list_keurig[days_to_sfirst < -45, days_to_sfirst:=NA]
 # K-Cup Purchase happen before machine adoption
 hh_list_keurig[days_to_sfirst < 0, days_to_sfirst:=0]
 hh_list_keurig[days_to_sfirst > 180, days_to_sfirst:=NA]
-hh_list_keurig[, k_first_date := ifelse(is.na(hfirst_date), sfirst_date, hfirst_date)]
+hh_list_keurig[, k_first_date := ifelse(is.na(days_to_sfirst), sfirst_date, hfirst_date)]
+hh_list_keurig[is.na(k_first_date), k_first_date := hfirst_date] # Only hardware adoption guys
 hh_list_keurig[, k_first_date := as.Date(k_first_date, origin = "1970-01-01")]
-hh_list_keurig[, panel_year := year(k_first_date)]
+hh_list_keurig[, k_first_week := wkend(k_first_date)]
+hh_list_keurig[, panel_year := year(k_first_week)]
 setkeyv(hh_list_keurig, c("household_code", "panel_year"))
 # About 50% Purchase Keurig and Coffee at the same time or software purchase happen earlier than coffee purchase.
-# About 70% Purchase within the first 2 weeks.
+# About 60% Purchase within the first 2 weeks.
 
 # Merge in hh information, and conduct regressions
 cols = c("household_code", "panel_year", "projection_factor",
@@ -276,7 +280,7 @@ cols = c("household_code", "panel_year", "projection_factor",
          "african_american", "hispanic", "cable", "internet",
          "panelist_zip_code", "fips_county_code", "fips_county_descr",
          "scantrack_market_code", "scantrack_market_descr", "dma_code", "dma_descr",
-         htnames)
+         setdiff(htnames, c("household_code", "panel_year")))
 
 # Encoding and cleaning hh information
 hh = hh[, cols, with=FALSE]
@@ -289,16 +293,18 @@ for (v in lvars){
   # hh[, vars:=factor(vars)]
   setnames(hh, "vars", v)
 }
-setkeyv(hh, c("household_code", "panel_year"))
+setkey(hh, household_code, panel_year)
+setkey(hh_list_keurig, household_code, panel_year)
 
 # Merge in hh info
-hh_list_keurig = hh_list_keurig[hh, nomatch=0L]
+hh_list_keurig = hh[hh_list_keurig]
 
 # Run regression of hh characteristics
 excl_set = c("household_code", "panel_year", "projection_factor",
              "panelist_zip_code", "fips_county_code", "fips_county_descr",
              "scantrack_market_code", "scantrack_market_descr", 
-             "dma_code", "dma_descr", setdiff(htnames, c("total_spent_hhi", "total_spent")))
+             "dma_code", "dma_descr", 
+             setdiff(htnames, c("total_spent_hhi", "total_spent", "ntrips", "nretailers")))
 fm = as.formula(paste("days_to_sfirst ~ ", paste(setdiff(cols, excl_set), collapse="+",sep=""), "-1", sep=""))
 X = model.matrix(fm, data=hh_list_keurig[!is.na(days_to_sfirst), ], sparse = TRUE)
 y = model.extract(model.frame(fm, data=hh_list_keurig[!is.na(days_to_sfirst),]), "response")
@@ -328,8 +334,7 @@ for (yr in ylist){
 setcolorder(hh_list, hnames)
 
 # Impute first adoption date based on the following rules
-# 1. If the hardware purchase happen before software (180 days),
-#    or software purchase happen 45 days before hardware purchase,
+# 1. If software purchase happen 45 days before hardware purchase,
 #    then, I regard the link to be too week, and impute adoption date.
 # 2. Impute 3 scenarios - only if imputed_dates is missing - note no burnin if present in previous year.
 #    2.1 No hardware observation -- use software date if software date>=first_date+burnin
@@ -338,17 +343,25 @@ setcolorder(hh_list, hnames)
 # impute_hdate --- store cases where hardware adoption can be imputed
 # k_first_date --- after which date, treat K-Cup in the choice set
 
-# Copy original hardware dates
-# Establish association between hardware and software sales only 
-hh_list[, `:=`(imputed_hfirst = hfirst_date, imputed_hlast = hlast_date)]
+# Establish association between hardware and software sales only
+# Check whether household is available in the next year after adoption
+hh_list[, `:=`(hfirst_week=wkend(hfirst_date), hlast_week=wkend(hlast_date))]
+hh_list[, panel_year := year(hfirst_week)+1]
+setkey(hh_list, household_code, panel_year)
+setkey(hh, household_code, panel_year)
+hh_list = hh[,.(household_code, panel_year, projection_factor)][hh_list]
+hh_list[, `:=`(imputed_hfirst = hfirst_date, imputed_hlast = hlast_date,
+               avail_next_year = !(is.na(projection_factor)),
+               panel_year=NULL, projection_factor=NULL)]
+hh_list[kholder==0, avail_next_year:=NA]
 hh_list[(sfirst_date - hfirst_date) < -45, `:=`(imputed_hfirst=NA, imputed_hlast=NA)]
-hh_list[(sfirst_date - hfirst_date) > 180, `:=`(imputed_hfirst=NA, imputed_hlast=NA)]
+#Most are not present in next year.
+#hh_list[(sfirst_date - hfirst_date) > 180, `:=`(imputed_hfirst=NA, imputed_hlast=NA)] 
 hh_list[, k_first_date:=imputed_hfirst]
-hh_list[(sfirst_date - hfirst_date)<0&(sfirst_date-hfirst_date)>=(-45), 
-        k_first_date:=sfirst_date]
 
 # create panel year as the first software purchase year
-hh_list[, `:=`(panel_year=year(sfirst_date))]
+hh_list[, `:=`(sfirst_week=wkend(sfirst_date), slast_week=wkend(slast_date))]
+hh_list[, `:=`(panel_year=year(sfirst_week))]
 
 # Considering burnin period, impute first and last hardware adoption
 hh_list[, himputed:=0]
@@ -358,9 +371,7 @@ for (yr in ylist){
           `:=`(imputed_hfirst = sfirst_date, imputed_hlast = sfirst_date, 
                k_first_date = sfirst_date, himputed = 1)]
   hh_list[panel_year==yr & is.na(k_first_date) & sfirst_date<(first_date+burnindays), 
-          `:=`(k_first_date = first_date)]
-  hh_list[panel_year==yr & is.na(k_first_date) & (sfirst_date - hfirst_date) < -45, 
-          `:=`(k_first_date = first_date)]
+          `:=`(k_first_date = first_date)] # In case of measurement error, underestimate K-Cup value.
   
   # If present in last year. Then, no need to burnin
   if(yr >= 2005){
@@ -372,13 +383,19 @@ for (yr in ylist){
     setnames(hh_list, "lastyname", lastyn)
   }
 }
+hh_list[sfirst_date<imputed_hfirst, k_first_date:=sfirst_date]
+# If no adoption, then, shouldn't adopt 
+hh_list[kholder==0, `:=`(imputed_hfirst=NA, imputed_hlast=NA, k_first_date=NA)]
 
 # Obtain adoption year
-hh_list[, `:=`(adoption_panel_year=year(imputed_hfirst), panel_year=NULL)]
+hh_list[, `:=`(imputed_hfirst_week = wkend(imputed_hfirst), imputed_hlast_week=wkend(imputed_hlast),
+               k_first_week = wkend(k_first_date))]
+hh_list[, `:=`(adoption_panel_year=year(imputed_hfirst_week), panel_year=year(k_first_week))]
 
-# Drop households who are not present during the years 2008, 2009, 2010, 2011, 2012, 2013. 
-hh_list[, existence := (y2006+y2007+y2008+y2009+y2010+y2011+y2012+y2013)]
+# Drop households who are not present during the years 2007, 2008, 2009, 2010, 2011, 2012, 2013. 
+hh_list[, existence := (y2007+y2008+y2009+y2010+y2011+y2012+y2013)]
 hh_list = hh_list[existence>0, ]
+hh_list[, existence := (y2004+y2005+y2006+y2007+y2008+y2009+y2010+y2011+y2012+y2013)]
 
 # Merge back into purchases to get consumption rate
 setkey(purchases, household_code)
@@ -387,13 +404,12 @@ purchases = purchases[hh_list[, .(household_code, kholder, k_first_date, imputed
 setkey(purchases, household_code, purchase_date, trip_code_uc, upc, upc_ver_uc)
 
 # If never adopted Keurig, let k_first_date be the last date of any purchase
-max_date = purchases[, max(purchase_date)]
+max_date = purchases[, max(purchase_date)] + 7
 purchases[is.na(k_first_date), k_first_date := max_date]
 
 # Obtain purchases and purchase occasions
 purchases[, adoption:=as.integer(purchase_date>=k_first_date)]
-purchases = purchases[as.integer(product_module_code)==1463, ]
-hh_purch = purchases[, .(quantity = sum(quantity * size1_amount), npurch = .N), 
+hh_purch = purchases[product_module_code==1463, .(quantity=sum(quantity*size1_amount), npurch=.N), 
                      by = c("household_code", "adoption")]
 
 # reshape data
@@ -412,63 +428,40 @@ setkey(hh_purch, household_code)
 setkey(hh_list, household_code)
 hh_list = hh_list[hh_purch, nomatch=0L]
 
-# Obtain the first adoption week_end
-# Define week_end to be the saturday ending that week. 
-first_week_end = as.Date("2004-08-21")
-max_adoption_date = hh_list[, max(k_first_date, na.rm=TRUE)]
-hh_list[k_first_date<=first_week_end, k_first_week_end:=first_week_end]
-cweek = first_week_end
-while (cweek < max_adoption_date){
-  cweek = cweek + 7
-  hh_list[k_first_date<=cweek & is.na(k_first_week_end), k_first_week_end:=cweek]
-}
-
-# Compute total weeks in the panel
-hh_list[is.na(k_first_week_end), `:=`(bweeks = (existence * 52.1429),
-                                      aweeks = as.numeric(NA))]
-# Get the number of weeks existence in panel and before and after adoption
-ynames = paste0("y", ylist)
-for (yr in ylist){
-  yn = paste0("y",yr)
-  if (yr==min(ylist)){
-    yn_before = NULL
-    yn_after= paste0("y", (yr+1):max(ylist))
-    bfvec = 0
-    afvec = rowSums(hh_list[, yn_after, with = F])*52.1429
-  } else if(yr==max(ylist)){
-    yn_before = paste0("y", min(ylist):(yr-1))
-    yn_after= NULL
-    bfvec = rowSums(hh_list[, yn_before, with = F])*52.1429
-    afvec = 0
-  } else{
-    yn_before = paste0("y", min(ylist):(yr-1))
-    yn_after= paste0("y", (yr+1):max(ylist))
-    bfvec = rowSums(hh_list[, yn_before, with = F])*52.1429
-    afvec = rowSums(hh_list[, yn_after, with = F])*52.1429
-  }
-  hh_list[, weeks_before := bfvec]
-  hh_list[, weeks_after := afvec]
-  hh_list[!is.na(k_first_week_end) & as.integer(adoption_panel_year)==yr, 
-          `:=`(bweeks = week(k_first_week_end) + weeks_before*52.1429, 
-               aweeks = (52.1429-week(k_first_week_end)+weeks_after*52.1429))]
-}
+# Obtain the number of weeks before and after adoption
+purchases[, week_end:=wkend(purchase_date)]
+wk_dt = unique(purchases[, .(panel_year, week_end)])
+setkey(wk_dt, panel_year, week_end)
+setkey(wk_dt, panel_year)
+setkey(hh, panel_year)
+hh_wks = hh[,.(household_code, panel_year)][wk_dt, nomatch=0L, allow.cartesian=T]
+setkey(hh_wks, household_code)
+setkey(hh_list, household_code)
+hh_wks = hh_list[,.(household_code, k_first_date, k_first_week)][hh_wks, nomatch=0L]
+hh_wks[, `:=`(badopt=as.integer(week_end<k_first_date), adopt=as.integer(week_end>=k_first_date))]
+hh_wks[, `:=`(badopt=ifelse(is.na(badopt), 1, badopt), adopt=ifelse(is.na(adopt), 0, adopt))]
+hh_wks = hh_wks[, .(bweeks = sum(badopt), aweeks = sum(adopt)), by=c("household_code")]
+setkey(hh_wks, household_code)
+setkey(hh_list, household_code)
+hh_list = hh_list[hh_wks, nomatch=0L]
 
 # Get average consumption per-week
 hh_list[, `:=`(brate = bquantity/bweeks,
                arate = aquantity/aweeks,
-               overall_rate = rowSums(cbind(bquantity, aquantity), na.rm=TRUE)/(existence*52.1429))]
+               overall_rate = rowSums(cbind(bquantity, aquantity), na.rm=TRUE)/(aweeks+bweeks))]
 
-# The household has to make at least 2 purchases annually to be counted, or at least consume 1 kcup on average per week. 
+# The household has to make at least 2 purchases annually to be counted, 
+# or at least consume 1 kcup on average per week. 
 hh_list[, annual_purchases := (sn+gsn+prior_sn)/existence]
-hh_list = hh_list[annual_purchases>=1.5 | (arate >= 1.25), ]
+hh_list = hh_list[annual_purchases>=1.25 | (arate >= 1.25), ]
 
 # Obtain the expenditure shares and reshape data as wide format
 hh_brand_purch = purchases[, .(expenditure = sum(total_price_paid-coupon_value),
                                quantity = sum(quantity * size1_amount)), 
                            by = c("household_code", "adoption", "brand_descr")]
 hh_brand_purch[, `:=`(expend_share = expenditure/sum(expenditure),
-                      expenditure = sum(expenditure), 
-                      quan_share = quantity/sum(quantity)),
+                      quan_share = quantity/sum(quantity),
+                      expenditure = sum(expenditure)),
                by = c("household_code", "adoption")]
 hh_brand_purch = hh_brand_purch[order(-expend_share), ]
 setkeyv(hh_brand_purch, c("household_code", "adoption"))
