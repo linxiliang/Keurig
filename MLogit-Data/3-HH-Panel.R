@@ -397,7 +397,7 @@ hh_brand_size_sales=hh_brand_size_sales[rcumshare<=0.95, .(household_code, ptype
                                                            roast, flavored, kona, colombian, sumatra, wb, rshare)]
 
 # Loop over year to create panel -- this is to avoid memory overloading
-year_list = hh_panel[, unique(panel_year)]
+year_list = c(2006:2013)
 hh_prod_panel = as.list(year_list)
 k=0
 for (yr in year_list){

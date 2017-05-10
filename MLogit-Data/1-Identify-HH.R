@@ -495,7 +495,8 @@ hh_list = hh_list[hh_brand_purch, nomatch=0L]
 setkey(hh, household_code)
 setkey(hh_list, household_code)
 hh_info_panel = hh_list[hh, nomatch=0L]
-
+hh_info_panel[, panel_year:=NULL]
+setnames(hh_info_panel, "i.panel_year", "panel_year")
 save(hh_list, hh_info_panel, file = paste(meta_dir, "/HH-Holder-Flags.RData", sep=""))
 
 #Clean up workspace
