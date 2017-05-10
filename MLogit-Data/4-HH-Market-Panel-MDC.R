@@ -213,10 +213,11 @@ hh_market_prod[, `:=`(brand_lag_keurig = brand_lag * keurig,
 # Scale price by 10, and inventory by 100
 hh_market_prod[, `:=`(inventory = inventory/10, kinventory = kinventory/10,
                       brand_cum_log = log(brand_cum+1), brand_cum = brand_cum/100)]
-hh_market_prod[, `:=`(invsq = inventory^2, brand_cum_sq = brand_cum^2)]
+hh_market_prod[, `:=`(invsq = inventory^2, brand_cum_sq = brand_cum^2, 
+                      outside = as.integer(brand_descr=="0NOTHING"))]
 name_order = c("household_code", "trip_code_uc", "dma_code", "hh", "t", "brand_descr", "brand", bvars, 
-               "keurig",  "flavored", "roast", "lightR", "mediumR", "medDR", "darkR", "assorted", "kona",
-               "colombian", "sumatra", "wb", "price", "brand_lag", "brand_lag_keurig", "brand_lag2_keurig",
+               "outside", "keurig", "flavored", "roast", "lightR", "mediumR", "medDR", "darkR", "assorted", 
+               "kona", "colombian", "sumatra", "wb", "price", "brand_lag", "brand_lag_keurig", "brand_lag2_keurig",
                "nbrand", "nprod", "total_spent", "total_spent_week", "grocery", "purchased", "size", 
                "inventory", "kinventory", "total_price_paid",  "coupon_value", "brand_descr_orig", "kholding")
 hh_market_prod = hh_market_prod[, name_order, with = FALSE]
@@ -228,3 +229,4 @@ if (cond_purch){
 } else{
   save(hh_market_prod, hh_demo, file = paste(output_dir,"/MDC-Purchase-Flavors.RData", sep=""))
 }
+

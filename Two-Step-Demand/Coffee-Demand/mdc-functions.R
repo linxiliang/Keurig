@@ -16,7 +16,7 @@ ll <- function(b1, b2, sig=1, K=KMat, X=XMat, idt=hh_samp){
   
   # Individual likelihood
   llv = idt_agg[, sum(prob)]
-  return(-llv)
+  return(-llv) 
 }
 
 ll_homo <- function(b){

@@ -221,6 +221,7 @@ bhatd = matrix(rep(0, draws*np), nrow=draws)
 deltad = matrix(rep(0, draws*(np*nz)), nrow=draws)
 sigd = array(0, dim=c(np, np, draws))
 bindv = array(0, dim=c(draws, nh, np))
+gc()
 
 ## Gibbs Sampling
 start_time = proc.time()[3]
@@ -250,10 +251,10 @@ for (d in 1:totdraws){
   
   # RW MH to draw betas for each household
   # Non-parallel version 
-  # for (i in 1:nh) {b0 = rwmhd_simple(i); beta0[i, ]=b0} 
+  # for (i in 1:nh) {b0 = rwmhd_simple(i); beta0[i, ]=b0}
   
   # Parallel version
-  clusterExport(cl, c('sig', 'bhat', 'beta0'))
+  clusterExport(cl, c('sig', 'bhat_all', 'beta0'))
   beta_list = clusterEvalQ(cl, lapply(hh_list, rwmhd))
   beta_list = unlist(beta_list, recursive=F)
   beta0 = matrix(unlist(beta_list), ncol=np, byrow=TRUE)
