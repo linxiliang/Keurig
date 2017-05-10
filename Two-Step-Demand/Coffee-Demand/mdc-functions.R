@@ -79,6 +79,7 @@ i_ll <- function(b, i=1){
 
 
 rwmhd_iid <- function(i){
+  bhat_i = bhat_all[i, ]
   # Obtain root of population variance matrix
   csig = backsolve(chol(sig), diag(np))
   
@@ -89,13 +90,14 @@ rwmhd_iid <- function(i){
   prop = c(orig + mvrnorm(1, rep(0, np), cov_i))
   
   # Walking step
-  ratio = exp(i_ll(prop, i=i)+lndMvn(prop, bhat, csig)-i_ll(orig, i=i)-lndMvn(orig, bhat, csig))
+  ratio = exp(i_ll(prop, i=i)+lndMvn(prop, bhat_i, csig)-i_ll(orig, i=i)-lndMvn(orig, bhat_i, csig))
   alpha = min(1, ratio)
   alpha = ifelse(is.na(alpha), 0, alpha) # Outlier should have no chance of being accepted.
   if (runif(1) <= alpha) return(prop) else return(orig)
 }
 
 rwmhd <- function(i){
+  bhat_i = bhat_all[i, ]
   # Obtain root of population variance matrix
   csig = backsolve(chol(sig), diag(np))
   
@@ -107,7 +109,7 @@ rwmhd <- function(i){
   prop = c(orig + mvrnorm(1, rep(0, np), cov_i))
   
   # Walking step
-  ratio = exp(i_ll(prop, i=i)+lndMvn(prop, bhat, csig)-i_ll(orig, i=i)-lndMvn(orig, bhat, csig))
+  ratio = exp(i_ll(prop, i=i)+lndMvn(prop, bhat_i, csig)-i_ll(orig, i=i)-lndMvn(orig, bhat_i, csig))
   alpha = min(1, ratio)
   alpha = ifelse(is.na(alpha), 0, alpha) # Outlier should have no chance of being accepted.
   if (runif(1) <= alpha) return(prop) else return(orig)

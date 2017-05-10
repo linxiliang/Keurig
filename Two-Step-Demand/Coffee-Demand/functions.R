@@ -95,6 +95,7 @@ pif_simple = function(h, b0, b1, bhat, sig){
 
 # Function for the Metropolis RW draws
 rwmhd_linear <- function(i){
+  bhat_i = bhat_all[i, ]
   nti = hh_market_prod[.(i), nt_i][1]
   cov_i = s2 * solve(hess_list[[i]] + solve(sig[1:(np-1), 1:(np-1)]))
   b0 = beta0[i,]
@@ -106,7 +107,7 @@ rwmhd_linear <- function(i){
   if (b1[np] <= max(hh_market_prod[.(i), min_budget])){
     b1[np] = max(hh_market_prod[.(i), min_budget])
   }
-  alpha = min(1, pif_linear(i, b0, b1, bhat, sig))
+  alpha = min(1, pif_linear(i, b0, b1, bhat_i, sig))
   alpha = ifelse(is.na(alpha), 0, alpha) # Outlier should have no chance of being accepted.
   b1[np-1] = log(b1[np-1])
   b0[np-1] = log(b0[np-1])
@@ -114,11 +115,12 @@ rwmhd_linear <- function(i){
 }
 
 rwmhd_simple <- function(i){
+  bhat_i = bhat_all[i, ]
   nti = hh_market_prod[.(i), nt_i][1]
   cov_i = s2 * solve(hess_list[[i]] + solve(sig))
   b0 = beta0[i,]
   b1 = c(b0 + mvrnorm(1, rep(0, np), cov_i))
-  alpha = min(1, pif_simple(i, b0, b1, bhat, sig))
+  alpha = min(1, pif_simple(i, b0, b1, bhat_i, sig))
   alpha = ifelse(is.na(alpha), 0, alpha) # Outlier should have no chance of being accepted.
   if (runif(1) <= alpha) return(b1) else return(b0)
 }

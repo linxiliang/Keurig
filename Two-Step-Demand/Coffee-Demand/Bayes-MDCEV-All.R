@@ -105,8 +105,14 @@ source(paste(code_dir, 'mdc-functions.R', sep=""))
 #---------------------------------------------------------------------------------------------------------#
 # Data Preparation
 # Load estimation data
-load(paste(input_dir,"MDC-RT-Purchase-Flavors.RData",sep=""))
-
+load(paste(input_dir,"MDC-Cond-Purchase-Flavors.RData",sep=""))
+hh_demo[, `:=`(total_spent = log(total_spent), total_spent_hhi=total_spent_hhi/100,
+               ntrips_hhi = ntrips_hhi/100)]
+znames = c("overall_rate", "inc40", "inc50", "inc60", "inc70",
+           "hhsize2", "hhsize3", "hhsize5", "twofamily", "threefamily",
+           "fulltime", "partime", "head_age_numeric", "presence_of_children",
+           "african_american", "hispanic", "total_spent", "total_spent_hhi", "ntrips_hhi")
+nz = length(znames) + 1
 if (market_code != "all"){
   if (market_code == "remaining"){
     hh_in_market = hh_demo[!(dma_code %in% big_markets), unique(household_code)]
@@ -200,9 +206,9 @@ V0 = nu0 * diag(np);
 sig0 = rwishart(nu0, solve(V0))$IW;
 bhat0 = rep(0, np)
 beta0 = matrix(rnorm(nh*np, mean=0, sd=3), nrow=nh)
-Z = rep(1, nh);
-A = 0;
-Dbar = t(rep(0,np));
+Z = cbind(rep(1, nh), as.matrix(hh_demo[, znames, with=F]))
+A = nu0 * diag(diag(var(Z)));
+Dbar = matrix(rep(0, nz*np), nrow=nz)
 s2 = 2.93^2/np;
 
 # Distribute the functions and relevant data to the workers.
@@ -212,6 +218,7 @@ clusterExport(cl,c('i_ll', 'rwmhd', 's2'))
 
 #Initialize storage of MCMC draws
 bhatd = matrix(rep(0, draws*np), nrow=draws)
+deltad = matrix(rep(0, draws*(np*nz)), nrow=draws)
 sigd = array(0, dim=c(np, np, draws))
 bindv = array(0, dim=c(draws, nh, np))
 
@@ -227,13 +234,16 @@ for (d in 1:totdraws){
   
   # Draw from the posterior
   sig  = rwishart(nu0+nh, solve(V0+S))$IW
-  bhat = mvrnorm(1, as.vector(Dhat), kronecker(sig, solve(t(Z)%*%Z)))
+  delta = mvrnorm(1, as.vector(Dtild), kronecker(sig, solve(t(Z)%*%Z + A)))
+  bhat_all = Z %*% matrix(delta, nrow=nz)
+  bhat = colMeans(bhat_all)
   print(bhat)
   
   # Store the posterior draws of mean betas and sigmas
   if ((d > burnin) & (d %% thin == 0)){
     indx = ceiling((d - burnin)/thin)
     bhatd[indx,] = bhat; 
+    deltad[indx,] = delta;
     sigd[, ,indx] = sig; 
     bindv[indx,,] = beta0;
   }
@@ -253,10 +263,8 @@ for (d in 1:totdraws){
 }
 
 # Save output to a dataset
-inx = seq(1, 10000, 2)
+inx = seq(1, 10000, 4)
 bindv = bindv[inx,,]
-save(hh_code_list, bhatd, sigd, bindv, bnames, 
+save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, 
      file = paste(output_dir, "MDCEV-MCMC-All-30000.RData", sep = ""))
-save(hh_code_list, bhatd, sigd, bindv, bnames, 
-     file = "~/data/Nielsen-Data/MDCEV-MCMC-All-30000.RData")
 stopCluster(cl)
