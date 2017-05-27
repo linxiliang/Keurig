@@ -42,7 +42,9 @@ retailer_panel = retailer_panel[, .(price = ifelse(brand_descr=="0NOTHING", 0,
                                        "brand_descr_orig", "ptype", "keurig", "roast", 
                                        "flavored", "kona","colombian", "sumatra", "wb", "in_rms")]
 retailer_panel[, `:=`(nprod = length(unique(prod_id)), nbrand=length(unique(brand_descr_orig))), 
-                      by = c("dma_code", "retailer_code", "week_end", "ptype")]
+               by = c("dma_code", "retailer_code", "week_end", "ptype")]
+retailer_panel[, `:=`(nprod = length(unique(prod_id))), 
+               by = c("dma_code", "retailer_code", "week_end", "ptype", "brand_descr_orig")]
 retailer_panel[, `:=`(prod_id = NULL)]
 save(retailer_panel, file = paste(output_dir, "/Retailer_Brand_Price_Panel.RData", sep=""))
 
@@ -51,7 +53,7 @@ hh_panel = hh_panel[panel_year>=year_threshold & !is.na(brand_type_lag), ]
 
 # Get rid of variables not needed for now.
 hh_panel = hh_panel[, .(dma_code, retailer_code, household_code, kholding, week_end, panel_year, 
-                        norder, trip_code_uc, coffee_trip, total_spent, total_spent_week, grocery,
+                        norder, trip_code_uc, coffee_trip, total_spent, total_spent_week, caf, grocery,
                         brand_type_lag, brand_cum, ptype_lag, brand_type_lag2, ptype_lag2, 
                         inv_all, inv_type, inv_brand_type, crate)]
 hh_panel = hh_panel[dma_code%in%top_dma_list & !is.na(trip_code_uc), ] # Constrain both to be in the top DMAs
@@ -61,8 +63,10 @@ if (cond_purch){
   hh_panel = hh_panel[coffee_trip==1, ]
 } else{
   # Sample 25% of non-purchase trips otherwise data become too big
-  s_trips = hh_panel[coffee_trip==0, .(trip_code_uc=sample(trip_code_uc, ceiling(0.25 * .N))), 
-                     by = c("household_code")][, trip_code_uc]
+  # s_trips = hh_panel[coffee_trip==0, .(trip_code_uc=sample(trip_code_uc, ceiling(0.25 * .N))), 
+  #                   by = c("household_code")][, trip_code_uc]
+  # Use caf drink purchase as outside option
+  s_trips = hh_panel[caf>0, unique(trip_code_uc)] 
   hh_panel = hh_panel[trip_code_uc%in%s_trips | coffee_trip==1, ]
 }
 
@@ -218,10 +222,11 @@ hh_market_prod[, `:=`(invsq = inventory^2, brand_cum_sq = brand_cum^2,
 name_order = c("household_code", "trip_code_uc", "dma_code", "hh", "t", "brand_descr", "brand", bvars, 
                "outside", "keurig", "flavored", "roast", "lightR", "mediumR", "medDR", "darkR", "assorted", 
                "kona", "colombian", "sumatra", "wb", "price", "brand_lag", "brand_lag_keurig", "brand_lag2_keurig",
-               "nbrand", "nprod", "total_spent", "total_spent_week", "grocery", "purchased", "size", 
+               "nbrand", "nprod", "total_spent", "total_spent_week", "caf", "grocery", "purchased", "size", 
                "inventory", "kinventory", "total_price_paid",  "coupon_value", "brand_descr_orig", "kholding")
 hh_market_prod = hh_market_prod[, name_order, with = FALSE]
-hh_market_prod[brand_descr=="0NOTHING", `:=`(size=grocery, total_price_paid=grocery, price=1, purchased=1)]
+hh_market_prod[brand_descr=="0NOTHING", `:=`(size=caf, total_price_paid=caf, price=1, purchased=as.integer(caf>0))]
+hh_market_prod[grepl("KEURIG", brand_descr), keurig:=0]
 setkey(hh_market_prod, hh, t, brand_descr, keurig)
 
 if (cond_purch){

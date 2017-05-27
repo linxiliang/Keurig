@@ -323,7 +323,7 @@ file.copy(paste(input_dir, "/Brand-Variations.RData", sep=""),
 # Obtain purchase information by week and type of outside option
 load(paste(input_dir, "/Products.RData", sep=""))
 coff_module = c(1463)
-hot_modules = c(1464, 1467, 1466, 1465, 1463, 1451, 1456, 1462, 1460, 1461, 
+hot_modules = c(1464, 1467, 1466, 1465, 1451, 1456, 1462, 1460, 1461, 
                 1458, 1459, 1457, 1048)
 # Need to filter
 # 1484: Carbonated Soft Drink - Select the energy drinks
@@ -358,7 +358,7 @@ setkey(trips, trip_code_uc)
 
 # Loop over modules to create the summary
 module_counter = 1
-for (module_i in c(all_modules,coff_module)){
+for (module_i in c(all_modules, coff_module)){
   load(paste("Data/Nielsen/HMS-Raw-R/Purchase-By-Module/", module_i, ".RData", sep=""))
   sales = purchases[, .(rev = sum(total_price_paid-coupon_value)), by = "trip_code_uc"]
   setkey(sales, trip_code_uc)

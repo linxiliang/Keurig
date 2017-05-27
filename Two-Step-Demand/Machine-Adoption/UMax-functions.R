@@ -119,3 +119,88 @@ eu2 <- function(umin, umax, alpha, zb, p, eps, E){
   }
 }
 
+# Solve the optimization using my algorithm
+Xifun <- function(e, alpha, psi, price) sum(psi/alpha * ((e/price+1)^(alpha)-1))
+
+ovfun <- function(e1, m0, rho, alpha, u0, price){
+  n_c = length(alpha)
+  psi = exp(u0 + log(price))
+  if (n_c<=1){
+    e = e1
+  } else{
+    e = rep(0, n_c)
+    e[1] = e1
+    v1 = u0[1]+(alpha[1]-1)*log(e[1]/price[1]+1)
+    for (i in 2:n_c){
+      e[i] =  price[i]*(exp((v1-u0[i])/(alpha[i]-1))-1)
+    }
+  }
+  return(log(rho) + (rho-1)*log(Xifun(e, alpha, psi, price)) + u0[1] + (alpha[1]-1)*log(e1/price[1] + 1) - m0)
+}
+
+ufun <- function(e1, m0, rho, alpha, u0, price){
+  n_c = length(alpha)
+  psi = exp(u0 + log(price))
+  if (n_c<=1){
+    e = e1
+  } else{
+    e = rep(e1, n_c)
+    v1 = u0[1]+(alpha[1]-1)*log(e[1]/price[1]+1)
+    for (i in 2:n_c){
+      e[i] =  price[i]*(exp((v1-u0[i])/(alpha[i]-1))-1)
+    }
+  }
+  return((Xifun(e, alpha, psi, price))^rho-exp(m0)*sum(e))
+}
+
+vfun <- function(m0, rho, alpha, u0, price){
+  if (length(u0)==1){
+    # solve for e1
+    e1v = uniroot(ovfun, c(0.0001, 10000), m0=m0, rho=rho, alpha=alpha, 
+                  u0=u0, price=price, tol=1e-16)
+    ufun(e1v$root, m0, rho, alpha, u0, price)
+  } else{
+    norder = order(u0, decreasing = T)
+    nK = length(norder)
+    alpha = alpha[norder]
+    price = price[norder]
+    u0 = u0[norder]
+    psi = exp(u0 + log(price))
+    zeta = m0 + 1
+    e = rep(0, nK)
+    k = 1
+    while (zeta>m0 & k<nK){
+      k = k+1
+      cmin = e[1]
+      for (j in 1:(k-1)){
+        e[j] = price[j] * (exp((u0[k]-u0[j])/(alpha[j]-1))-1) 
+      }
+      cmax = e[1]
+      zeta = log(rho) + (rho-1)*log(Xifun(e, alpha, psi, price)) + u0[1] + (alpha[1]-1)*log(e[1]/price[1] + 1)
+    }
+    # solve for e1
+    e1v = uniroot(ovfun, c(cmin+0.0000001, cmax), m0=m0, rho=rho, alpha=alpha[1:j], 
+                  u0=u0[1:j], price=price[1:j], tol=1e-16)
+    # Given e1 compute utility
+    ufun(e1v$root, m0, rho, alpha[1:j], u0[1:j], price[1:j])
+  }
+}
+
+# Simulation to make sure the algorithm works
+# n = 100
+# u0 = rnorm(n)
+# price = runif(n)
+# psi = exp(u0 + log(price))
+# alpha = runif(n, min = 0.5, max = 0.95)
+# rho = 0.6
+# m0 = 0.6*0.2
+# vfun(m0, rho, alpha, u0, price)
+# 
+# # optimization approach
+# Uf <- function(e) -(sum(psi/alpha * ((e/price+1)^(alpha)-1)))^rho + exp(m0)*sum(e)
+# 
+# kopt = optim(rep(0.1, 100), Uf, method = "L-BFGS-B", lower=rep(0,100))
+# kopt$value
+# 
+# system.time(replicate(10, optim(rep(0.1, 100), Uf, method = "L-BFGS-B", lower=rep(0,100))))
+# system.time(replicate(10, vfun(m0, rho, alpha, u0, price)))

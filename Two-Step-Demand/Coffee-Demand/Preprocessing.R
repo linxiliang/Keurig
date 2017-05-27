@@ -17,15 +17,10 @@ hh_samp[, t := .GRP, by = "t"]
 setkey(hh_samp, hh, t, brand, roast)
 
 # Create the Design Matrix
-nb = length(hh_market_prod[, unique(brand)])
-bnames = paste0("a", c(2:nb))
 BMat = as.matrix(hh_samp[, bnames, with=FALSE])
-xnames = c(bnames, "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
-           "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag",
-           "nprod", "nbrand")
 XMat = as.matrix(hh_samp[, xnames, with=FALSE])
 #Create a K matrix to allow different satiation rate for Keurig and Ground 
-KMat = hh_samp[, cbind(1-keurig, keurig)]
+KMat = hh_samp[, cbind(outside, 1-keurig-outside, keurig)]
 
 # Obtain the M --- Number of items chosen in the trip
 hh_samp[, `:=`(M = sum(purchased)), by = c("household_code", "t")]

@@ -38,30 +38,30 @@ set.seed(12345)
 
 #---------------------------------------------------------------------------------------------------------# 
 # Initialize Parallel Execution Environment
-# primary <- 'bushgcn01'
-# machineAddresses <- list(
-#   list(host=primary, user='xlin0',
-#        ncore=20),
-#   list(host='bushgcn02',user='xlin0',
-#        ncore=20),
-#   list(host='bushgcn03',user='xlin0',
-#        ncore=20),
-#   list(host='bushgcn04',user='xlin0',
-#        ncore=20),
-#   list(host='bushgcn05',user='xlin0',
-#        ncore=20),
-#   list(host='bushgcn06',user='xlin0',
-#        ncore=20)
-#   )
-primary <- 'bushgcn10'
+primary <- 'bushgcn01'
 machineAddresses <- list(
   list(host=primary, user='xlin0',
-       ncore=40),
-  list(host='bushgcn11',user='xlin0',
-       ncore=40),
-  list(host='bushgcn12',user='xlin0',
-       ncore=40)
+       ncore=20),
+  list(host='bushgcn02',user='xlin0',
+       ncore=20),
+  list(host='bushgcn03',user='xlin0',
+       ncore=20),
+  list(host='bushgcn04',user='xlin0',
+       ncore=20),
+  list(host='bushgcn05',user='xlin0',
+       ncore=20),
+  list(host='bushgcn06',user='xlin0',
+       ncore=20)
   )
+# primary <- 'bushgcn30'
+# machineAddresses <- list(
+#   list(host=primary, user='xlin0',
+#        ncore=40),
+#   list(host='bushgcn31',user='xlin0',
+#        ncore=40),
+#   list(host='bushgcn32',user='xlin0',
+#        ncore=40)
+#   )
 
 spec <- lapply(machineAddresses,
                function(machine) {
@@ -105,14 +105,21 @@ source(paste(code_dir, 'mdc-functions.R', sep=""))
 #---------------------------------------------------------------------------------------------------------#
 # Data Preparation
 # Load estimation data
-load(paste(input_dir,"MDC-Cond-Purchase-Flavors.RData",sep=""))
-hh_demo[, `:=`(total_spent = log(total_spent), total_spent_hhi=total_spent_hhi/100,
-               ntrips_hhi = ntrips_hhi/100)]
+load(paste(input_dir,"MDC-Purchase-Flavors.RData",sep=""))
+
+# Names settings
+nb = length(hh_market_prod[, unique(brand)])
+bnames = paste0("a", c(2:nb))
+xnames = c(bnames, "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
+           "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag",
+           "nprod", "nbrand")
 znames = c("overall_rate", "inc40", "inc50", "inc60", "inc70",
            "hhsize2", "hhsize3", "hhsize5", "twofamily", "threefamily",
-           "fulltime", "partime", "head_age_numeric", "presence_of_children",
-           "african_american", "hispanic", "total_spent", "total_spent_hhi", "ntrips_hhi")
-nz = length(znames) + 1
+           "fulltime", "presence_of_children",
+           "african_american", "hispanic", "total_spent", "total_spent_hhi")
+hh_demo[, `:=`(total_spent = log(total_spent), total_spent_hhi=total_spent_hhi/100,
+               overall_rate = log(overall_rate))]
+
 if (market_code != "all"){
   if (market_code == "remaining"){
     hh_in_market = hh_demo[!(dma_code %in% big_markets), unique(household_code)]
@@ -162,18 +169,20 @@ for (i in 1:ncl){
   }
   hh_list = hh_n_list[i_start:i_end]
   hh_market_prod = hh_full[hh%in%hh_list, ]
-  clusterExport(cl[i], c('hh_list', 'hh_market_prod'))
+  hh_demo_chunk = hh_demo[hh%in%hh_list, ]
+  clusterExport(cl[i], c('hh_list', 'hh_market_prod', 'hh_demo_chunk'))
 }
 
 #---------------------------------------------------------------------------------------------------------#
 # Parameter setting
 # Number of Parameters to be estimated
+nz = length(znames) + 1
 nk = ncol(KMat)
 nx = ncol(XMat)
 np = nk+nx # if sigma is estimated, put + 1
 nh = length(hh_full[, unique(hh)])
 nt = length(hh_full[, unique(t)])
-clusterExport(cl, c('xnames', 'll', 'ihessfun', 'input_dir', "nk", "nx", "np", "nh"))
+clusterExport(cl, c('xnames', 'znames', 'll', 'ihessfun', 'input_dir', "nk", "nx", "np", "nh"))
 invisible(clusterEvalQ(cl, setwd("~/Keurig")))
 invisible(clusterEvalQ(cl, load(paste(input_dir, "/HH-Aux-Market.RData", sep=""))))
 
@@ -189,14 +198,14 @@ save(opt0, hess, file = paste(input_dir, "/Homo-Hessian.RData", sep=""))
 invisible(clusterEvalQ(cl, load(paste(input_dir, "/Homo-Hessian.RData", sep=""))))
 hess_list = clusterEvalQ(cl, lapply(hh_list, ihessfun))
 hess_list = unlist(hess_list, recursive=F)
-save(opt0, hess, hess_list, file = paste(input_dir, "/Hessian.RData", sep=""))
-# save(opt0, hess, hess_list, file = paste(input_dir, "/Posterior-Variance.RData", sep=""))
+#save(opt0, hess, hess_list, file = paste(input_dir, "/Hessian.RData", sep=""))
+save(opt0, hess, hess_list, file = paste(input_dir, "/Posterior-Variance.RData", sep=""))
 gc()
 #---------------------------------------------------------------------------------------------------------#
 # Bayesian Estimation 
 # MCMC Settings
 burnin = 0
-thin   = 3
+thin   = 5
 draws  = 10000
 totdraws = draws*thin + burnin
 
@@ -204,23 +213,28 @@ totdraws = draws*thin + burnin
 nu0 = max(c(4, 0.01*nh, np))
 V0 = nu0 * diag(np);
 sig0 = rwishart(nu0, solve(V0))$IW;
-bhat0 = rep(0, np)
-beta0 = matrix(rnorm(nh*np, mean=0, sd=3), nrow=nh)
 Z = cbind(rep(1, nh), as.matrix(hh_demo[, znames, with=F]))
 A = nu0 * diag(diag(var(Z)));
 Dbar = matrix(rep(0, nz*np), nrow=nz)
 s2 = 2.93^2/np;
 
 # Distribute the functions and relevant data to the workers.
-invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hessian.RData", sep=""))))
-# invisible(clusterEvalQ(cl, load(paste(input_dir, "/Posterior-Variance.RData", sep=""))))
-clusterExport(cl,c('i_ll', 'rwmhd', 's2'))
+#invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hessian.RData", sep=""))))
+invisible(clusterEvalQ(cl, load(paste(input_dir, "/Posterior-Variance.RData", sep=""))))
+clusterExport(cl,c('i_ll', 'rwmhd', 'prefrun', 's2'))
+invisible(clusterEvalQ(cl, (Z_i=cbind(rep(1, nrow(hh_demo_chunk)), as.matrix(hh_demo_chunk[, znames, with=F])))))
+invisible(clusterEvalQ(cl, (beta_dt=data.table(matrix(opt0$par+rnorm(length(hh_list)*np, mean=0, sd=1), 
+                                                      ncol=length(hh_list))))))
+invisible(clusterEvalQ(cl, setnames(beta_dt, names(beta_dt), as.character(hh_list))))
+beta0 = invisible(clusterEvalQ(cl, beta_dt))
+bhnames = as.integer(unlist(lapply(beta0, names)))
+beta0 = matrix(t(unlist(beta0)), ncol=np, byrow=T)
 
 #Initialize storage of MCMC draws
 bhatd = matrix(rep(0, draws*np), nrow=draws)
 deltad = matrix(rep(0, draws*(np*nz)), nrow=draws)
 sigd = array(0, dim=c(np, np, draws))
-bindv = array(0, dim=c(draws, nh, np))
+bindv = array(0, dim=c(draws - ceiling((40000 - burnin)/thin), nh, np))
 gc()
 
 ## Gibbs Sampling
@@ -228,15 +242,18 @@ start_time = proc.time()[3]
 for (d in 1:totdraws){
   # For given betas - preference matrix, draw posterior mean and covariance matrix
   # Compute the posterior mean and variance of betas
-  
-  Dhat = solve(t(Z) %*% Z) %*% t(Z) %*% beta0
-  Dtild = solve(t(Z) %*% Z + A) %*% (t(Z) %*% Z %*% Dhat + A %*% Dbar)     
-  S    = t(beta0 - Z %*% Dtild) %*% (beta0 - Z %*% Dtild) + t(Dhat - Dbar) %*% A %*% (Dhat - Dbar)
+  Z_s = Z[bhnames, ]
+  n_s = length(bhnames)
+
+  Dhat = solve(t(Z_s) %*% Z_s) %*% t(Z_s) %*% beta0
+  Dtild = solve(t(Z_s) %*% Z_s + A) %*% (t(Z_s) %*% Z_s %*% Dhat + A %*% Dbar)     
+  S    = t(beta0 - Z_s %*% Dtild) %*% (beta0 - Z_s %*% Dtild) + t(Dtild - Dbar) %*% A %*% (Dtild - Dbar)
   
   # Draw from the posterior
-  sig  = rwishart(nu0+nh, solve(V0+S))$IW
-  delta = mvrnorm(1, as.vector(Dtild), kronecker(sig, solve(t(Z)%*%Z + A)))
-  bhat_all = Z %*% matrix(delta, nrow=nz)
+  sig  = rwishart(nu0+n_s, solve(V0+S))$IW
+  delta = mvrnorm(1, as.vector(Dtild), kronecker(sig, solve(t(Z_s)%*%Z_s + A)))
+  Delta = matrix(delta, nrow=nz)
+  bhat_all = Z_s %*% Delta
   bhat = colMeans(bhat_all)
   print(bhat)
   
@@ -246,7 +263,7 @@ for (d in 1:totdraws){
     bhatd[indx,] = bhat; 
     deltad[indx,] = delta;
     sigd[, ,indx] = sig; 
-    bindv[indx,,] = beta0;
+    if (d > 40000) bindv[indx - ceiling((40000 - burnin)/thin), ,] = beta0;
   }
   
   # RW MH to draw betas for each household
@@ -254,10 +271,10 @@ for (d in 1:totdraws){
   # for (i in 1:nh) {b0 = rwmhd_simple(i); beta0[i, ]=b0}
   
   # Parallel version
-  clusterExport(cl, c('sig', 'bhat_all', 'beta0'))
-  beta_list = clusterEvalQ(cl, lapply(hh_list, rwmhd))
-  beta_list = unlist(beta_list, recursive=F)
-  beta0 = matrix(unlist(beta_list), ncol=np, byrow=TRUE)
+  clusterExport(cl, c('sig', 'Delta', 'd'))
+  beta_list = clusterEvalQ(cl, prefrun())
+  bhnames = as.integer(unlist(lapply(beta_list, names)))
+  beta0 = matrix(unlist(beta_list), ncol=np, byrow=T)
   
   cat("Finished drawing", d, "out of", totdraws, ", and total time elapsed:", 
       proc.time()[3] - start_time, "\n\n")
@@ -266,6 +283,10 @@ for (d in 1:totdraws){
 # Save output to a dataset
 inx = seq(1, 10000, 4)
 bindv = bindv[inx,,]
-save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, 
-     file = paste(output_dir, "MDCEV-MCMC-All-30000.RData", sep = ""))
+#save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, 
+#     file = paste(output_dir, "MDCEV-MCMC-All-30000.RData", sep = ""))
 stopCluster(cl)
+
+
+save(hh_code_list, bhatd, deltad, sigd, bnames, 
+     file = paste(output_dir, "MDCEV-MCMC-O-Caf-Bhat.RData", sep = ""))

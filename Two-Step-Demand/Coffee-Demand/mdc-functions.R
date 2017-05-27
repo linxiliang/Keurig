@@ -32,7 +32,7 @@ ihessfun <- function(i){
   nti = hh_market_prod[.(i), nt_i][1]
   hh_indv_mod = hh_market_prod[.(i), ]
   XIndv = as.matrix(hh_indv_mod[, xnames, with=FALSE])
-  KIndv = hh_indv_mod[, cbind(1-keurig, keurig)]
+  KIndv = hh_indv_mod[, cbind(outside, 1-keurig-outside, keurig)]
   
   fll_indv <- function(b, xdt=hh_indv_mod){
     b1 = b[1:nx]
@@ -73,20 +73,20 @@ i_ll <- function(b, i=1){
   b2 = exp(b2)/(1+exp(b2))
   hh_indv_mod = hh_market_prod[.(i), ]
   XIndv = as.matrix(hh_indv_mod[, xnames, with=FALSE])
-  KIndv = hh_indv_mod[, cbind(1-keurig, keurig)]
+  KIndv = hh_indv_mod[, cbind(outside, 1-keurig-outside, keurig)]
   return(-ll(b1, b2, X=XIndv, K=KIndv, idt = hh_indv_mod))
 }
 
 
 rwmhd_iid <- function(i){
-  bhat_i = bhat_all[i, ]
+  bhat_i = bhat_chunk[as.character(i), ]
   # Obtain root of population variance matrix
   csig = backsolve(chol(sig), diag(np))
   
   # Proposals
   #cov_i = s2 * solve(hess_list[[i]] + solve(sig))
   cov_i = s2 * sig
-  orig = beta0[i,]
+  orig = unlist(beta_dt[, as.character(i), with=F], recursive = T, use.names = F)
   prop = c(orig + mvrnorm(1, rep(0, np), cov_i))
   
   # Walking step
@@ -97,15 +97,15 @@ rwmhd_iid <- function(i){
 }
 
 rwmhd <- function(i){
-  bhat_i = bhat_all[i, ]
+  bhat_i = bhat_chunk[as.character(i), ]
   # Obtain root of population variance matrix
   csig = backsolve(chol(sig), diag(np))
   
   # Proposals
-  cov_i = s2 * solve(hess_list[[i]] + solve(sig))
+  #cov_i = 9 * s2 * solve(hess_list[[i]] + solve(sig))
   
-  #cov_i = s2 * sig
-  orig = beta0[i,]
+  cov_i = s2 * sig
+  orig = unlist(beta_dt[, as.character(i), with=F], recursive = T, use.names = F)
   prop = c(orig + mvrnorm(1, rep(0, np), cov_i))
   
   # Walking step
@@ -113,4 +113,25 @@ rwmhd <- function(i){
   alpha = min(1, ratio)
   alpha = ifelse(is.na(alpha), 0, alpha) # Outlier should have no chance of being accepted.
   if (runif(1) <= alpha) return(prop) else return(orig)
+}
+
+# Wrapper for preference estimation
+prefrun <- function(){
+  .GlobalEnv$bhat_chunk = Z_i %*% Delta
+  row.names(.GlobalEnv$bhat_chunk) = hh_list
+  if (d>40000){
+    # Sample 50% of households 
+    #hh_list_samp = sort(sample(hh_list, ceiling(length(hh_list)*0.50)))
+    #dtx = lapply(hh_list_samp, rwmhd)
+    #beta_dt[, c(as.character(hh_list_samp)) := dtx]
+    dtx = lapply(hh_list, rwmhd)
+    beta_dt[, c(as.character(hh_list)) := dtx]
+    return(beta_dt)
+  } else{
+    # Sampl 10% of households
+    hh_list_samp = sort(sample(hh_list, ceiling(length(hh_list)*0.10)))
+    dtx = lapply(hh_list_samp, rwmhd)
+    beta_dt[, c(as.character(hh_list_samp)) := dtx]
+    return(beta_dt[, as.character(hh_list_samp), with = F])
+  }
 }
