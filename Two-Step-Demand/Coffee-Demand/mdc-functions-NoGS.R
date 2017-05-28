@@ -11,7 +11,7 @@ detfun<-function(v, d){
 
 ll <- function(b1, b2, b3, sig=1, K=KMat, X=XMat, idt=hh_samp){
   # Get the correct alpha, bhat
-  idt[, `:=`(bz = X%*%b1, alpha = K%*%b2)]
+  idt[, `:=`(bz = X%*%b1, alpha = K%*%c(0.98, b2))]
   
   # First compute V_k using sparse matrix multiplication
   idt[, Vk := (bz + (alpha-1) * lexpend - lprice)/sig]
@@ -39,8 +39,8 @@ ll <- function(b1, b2, b3, sig=1, K=KMat, X=XMat, idt=hh_samp){
 
 ll_homo <- function(b){
   b1 = b[1:nx]
-  b2 = b[(nx+1):(nx+nk)]
-  b3 = b[(nx+nk+1)]
+  b2 = b[(nx+1):(nx+nk-1)]
+  b3 = b[(nx+nk)]
   b2 = exp(b2)/(1+exp(b2))
   b3 = exp(b3)/(1+exp(b3))
   #sigma = exp(b[length(b)])
@@ -56,9 +56,8 @@ ihessfun <- function(i){
   
   fll_indv <- function(b, xdt=hh_indv_mod){
     b1 = b[1:nx]
-    b2 = b[(nx+1):(nx+nk)]
-    b2 = b[(nx+1):(nx+nk)]
-    b3 = b[(nx+nk+1)]
+    b2 = b[(nx+1):(nx+nk-1)]
+    b3 = b[(nx+nk)]
     b2 = exp(b2)/(1+exp(b2))
     b3 = exp(b3)/(1+exp(b3))
     fll = 0.9*ll(b1, b2, b3, K=KIndv, X=XIndv, idt = xdt) + 0.1* nti/nsamp *ll(b1, b2, b3)
@@ -68,8 +67,8 @@ ihessfun <- function(i){
   
   ll_indv <- function(b, xdt=hh_indv_mod){
     b1 = b[1:nx]
-    b2 = b[(nx+1):(nx+nk)]
-    b3 = b[(nx+nk+1)]
+    b2 = b[(nx+1):(nx+nk-1)]
+    b3 = b[(nx+nk)]
     b2 = exp(b2)/(1+exp(b2))
     b3 = exp(b3)/(1+exp(b3))
     return(ll(b1, b2, b3, K=KIndv, X=XIndv, idt = xdt))
@@ -94,8 +93,8 @@ ihessfun <- function(i){
 
 i_ll <- function(b, i=1){
   b1 = b[1:nx]
-  b2 = b[(nx+1):(nx+nk)]
-  b3 = b[(nx+nk+1)]
+  b2 = b[(nx+1):(nx+nk-1)]
+  b3 = b[(nx+nk)]
   b2 = exp(b2)/(1+exp(b2))
   b3 = exp(b3)/(1+exp(b3))
   hh_indv_mod = hh_market_prod[.(i), ]

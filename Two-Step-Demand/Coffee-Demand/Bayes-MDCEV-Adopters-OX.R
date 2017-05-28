@@ -34,11 +34,11 @@ tab_dir = "Tabfigs/Bayes-MCMC/tabs/"
 
 # Set seed
 RNGkind("L'Ecuyer-CMRG")
-set.seed(12345)
+set.seed(1234567)
 
 #---------------------------------------------------------------------------------------------------------# 
 # Initialize Parallel Execution Environment
-primary <- 'bushgcn01'
+# primary <- 'bushgcn01'
 # machineAddresses <- list(
 #   list(host=primary, user='xlin0',
 #        ncore=20),
@@ -53,13 +53,13 @@ primary <- 'bushgcn01'
 #   list(host='bushgcn06',user='xlin0',
 #        ncore=20)
 #   )
-primary <- 'bushgcn10'
+primary <- 'bushgcn35'
 machineAddresses <- list(
   list(host=primary, user='xlin0',
        ncore=40),
-  list(host='bushgcn11',user='xlin0',
+  list(host='bushgcn36',user='xlin0',
        ncore=40),
-  list(host='bushgcn12',user='xlin0',
+  list(host='bushgcn37',user='xlin0',
        ncore=40)
   )
 
@@ -91,7 +91,7 @@ invisible(clusterEvalQ(cl, .Random.seed <- s))
 
 #---------------------------------------------------------------------------------------------------------#
 #Source the function file
-source(paste(code_dir, 'mdc-functions-No-Outside.R', sep=""))
+source(paste(code_dir, 'mdc-functions-OX.R', sep=""))
 
 # ubar: Implicit ubar function for utility level
 # ll_linear: log-likelihood function for logit model with 
@@ -108,16 +108,14 @@ source(paste(code_dir, 'mdc-functions-No-Outside.R', sep=""))
 load(paste(input_dir,"MDC-Cond-Purchase-Flavors.RData",sep=""))
 hh_market_prod = hh_market_prod[brand_descr!="0NOTHING", ]
 hh_market_prod[, kholder:=as.integer(any(kholding==1)), by = "hh"]
-hh_market_prod[grepl("KEURIG", brand_descr), keurig:=1]
 hh_market_prod = hh_market_prod[kholder==1, ]
 gc()
 
 # Names settings
 nb = hh_market_prod[, max(brand)]
-bnames = paste0("a", c(3:nb))
+bnames = paste0("a", c(2:nb))
 xnames = c(bnames, "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
-           "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag",
-           "nprod", "nbrand")
+           "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", "nbrand")
 znames = c("overall_rate", "inc40", "inc50", "inc60", "inc70",
            "hhsize2", "hhsize3", "hhsize5", "twofamily", "threefamily",
            "fulltime", "presence_of_children",
@@ -134,17 +132,17 @@ if (market_code != "all"){
   hh_market_prod = hh_market_prod[household_code%in%hh_in_market, ]
 }
 
+source(paste(code_dir, 'Preprocessing-O1.R', sep=""))
+
 # Reassign hh and t
-# hh_new_list = hh_market_prod[, unique(household_code)]
-# hh_demo = hh_demo[household_code%in%hh_new_list, ]
-# setkey(hh_demo, household_code)
-# hh_demo[, hh := .GRP, by = "household_code"]
+hh_new_list = hh_market_prod[, unique(household_code)]
+hh_demo = hh_demo[household_code%in%hh_new_list, ]
+setkey(hh_demo, household_code)
+hh_demo[, hh := .GRP, by = "household_code"]
 setkey(hh_market_prod, household_code, t, brand_descr, keurig, roast, brand_descr_orig)
 hh_market_prod[, hh:= .GRP, by = "hh"]
 setkey(hh_market_prod, hh, t)
 hh_market_prod[, t := .GRP, by = "t"]
-
-source(paste(code_dir, 'Preprocessing-O1.R', sep=""))
 
 # Reset Key
 setkey(hh_market_prod, hh, t, brand, roast)
@@ -188,10 +186,10 @@ for (i in 1:ncl){
 nz = length(znames) + 1
 nk = ncol(KMat)
 nx = ncol(XMat)
-np = nk+nx # if sigma is estimated, put + 1
+np = nk+nx+1# if sigma is estimated, put + 1
 nh = length(hh_full[, unique(hh)])
 nt = length(hh_full[, unique(t)])
-clusterExport(cl, c('xnames', 'znames', 'll', 'ihessfun', 'input_dir', "nk", "nx", "np", "nh"))
+clusterExport(cl, c('xnames', 'znames', 'detfun', 'll', 'ihessfun', 'input_dir', "nk", "nx", "np", "nh"))
 invisible(clusterEvalQ(cl, setwd("~/Keurig")))
 invisible(clusterEvalQ(cl, load(paste(input_dir, "/HH-Aux-Market.RData", sep=""))))
 
@@ -200,22 +198,22 @@ invisible(clusterEvalQ(cl, load(paste(input_dir, "/HH-Aux-Market.RData", sep="")
 # Estimate an homogeneous logit model to use it to tune RW draws
 b0 = rnorm(np)
 opt0 = optim(b0, ll_homo, gr = NULL, method = c("BFGS"), control = list(reltol=1e-16))
-hess = hessian(ll_homo, b0, h = 1e-4)
-save(opt0, hess, file = paste(input_dir, "/Homo-Hessian.RData", sep=""))
+hess = hessian(ll_homo, opt0$par, h = 1e-4)
+save(opt0, hess, file = paste(input_dir, "/Homo-Hessian-Adopters.RData", sep=""))
 
 # Evaluate Hessian at Fractional likelihood
-invisible(clusterEvalQ(cl, load(paste(input_dir, "/Homo-Hessian.RData", sep=""))))
+invisible(clusterEvalQ(cl, load(paste(input_dir, "/Homo-Hessian-Adopters.RData", sep=""))))
 hess_list = clusterEvalQ(cl, lapply(hh_list, ihessfun))
 hess_list = unlist(hess_list, recursive=F)
-#save(opt0, hess, hess_list, file = paste(input_dir, "/Hessian.RData", sep=""))
-save(opt0, hess, hess_list, file = paste(input_dir, "/No-Outside-Hessian.RData", sep=""))
+save(opt0, hess, hess_list, file = paste(input_dir, "/Hessian-Adopters.RData", sep=""))
+# save(opt0, hess, hess_list, file = paste(input_dir, "/Posterior-Variance.RData", sep=""))
 gc()
 #---------------------------------------------------------------------------------------------------------#
 # Bayesian Estimation 
 # MCMC Settings
 burnin = 0
 thin   = 5
-draws  = 12000
+draws  = 3000
 tunein = 0
 totdraws = draws*thin + burnin
 
@@ -229,8 +227,8 @@ Dbar = matrix(rep(0, nz*np), nrow=nz)
 s2 = 2.93^2/np;
 
 # Distribute the functions and relevant data to the workers.
-invisible(clusterEvalQ(cl, load(paste(input_dir, "/No-Outside-Hessian-Adopters.RData", sep=""))))
-#invisible(clusterEvalQ(cl, load(paste(input_dir, "/Posterior-Variance.RData", sep=""))))
+invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hessian-Adopters.RData", sep=""))))
+# invisible(clusterEvalQ(cl, load(paste(input_dir, "/Posterior-Variance.RData", sep=""))))
 clusterExport(cl,c('i_ll', 'rwmhd', 'prefrun', 's2', 'tunein'))
 invisible(clusterEvalQ(cl, (Z_i=cbind(rep(1, nrow(hh_demo_chunk)), as.matrix(hh_demo_chunk[, znames, with=F])))))
 invisible(clusterEvalQ(cl, (beta_dt=data.table(matrix(opt0$par+rnorm(length(hh_list)*np, mean=0, sd=10), 
@@ -291,13 +289,16 @@ for (d in 1:totdraws){
 }
 
 # Save output to a dataset
+inx = seq(1, 3333, 3)
 inx = seq(1, 10000, 4)
+
 # bindv = bindv[inx,,]
 # save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, 
 #      file = paste(output_dir, "MDCEV-MCMC-All-30000.RData", sep = ""))
-stopCluster(cl)
+# stopCluster(cl)
 
-inx = seq(1, 3333, 3)
-bindv = bindv[inx,,]
+#save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, 
+#      file = paste(output_dir, "MDCEV-MCMC-O1.RData", sep = ""))
 save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, 
-     file = paste(output_dir, "MDCEV-MCMC-No-Outside-Adopters.RData", sep = ""))
+      file = paste(output_dir, "MDCEV-MCMC-OX.RData", sep = ""))
+

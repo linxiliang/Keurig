@@ -208,18 +208,37 @@ series_sales = prod_sales[, .(np = sum(np), revenue = sum(revenue)), by = series
 
 # ----------------------------------------------------------------------------------------------------#
 # Obtain RMS Shopping Environment
-load(paste(RMS_input_dir, "/7755.RData", sep=""))
-move[, `:=`(feature=NULL, display=NULL)]
-setkey(move, upc, upc_ver_uc)
-setkey(products, upc, upc_ver_uc)
-move = move[products[, .(upc, upc_ver_uc, upc_descr, brand_descr, series)], nomatch=0L]
-setkeyv(move, c("store_code_uc", "panel_year"))
-setkeyv(stores, c("store_code_uc", "panel_year"))
-move = move[stores[, .(store_code_uc, panel_year, dma_code, retailer_code)], nomatch=0L]
+file_list = list.files(paste0(RMS_input_dir, "/7755"))
+move_list = as.list(1:length(file_list))
+i = 0
+for (fn in file_list){
+  i = i+1
+  load(paste0(RMS_input_dir, "/7755/", fn))
+  move[, `:=`(feature=NULL, display=NULL, prmult_for_reference_only_do_not_use=NULL, processed=NULL)]
+  move[, panel_year := year(week_end)]
+  setkeyv(move, c("store_code_uc", "panel_year"))
+  setkeyv(stores, c("store_code_uc", "panel_year"))
+  move = move[stores[,.(store_code_uc, panel_year, retailer_code, dma_code)], nomatch=0L]
+  move_list[[i]]= move[dma_code %in% top_dma_list & panel_year<=2013, ]
+}
+# Correct version
+move = rbindlist(move_list)
+rm(move_list)
+gc()
+move[, upc_ver_uc := as.integer(median(na.omit(upc_ver_uc))), by = c("upc", "upc_ver_uc_corrected")]
+setnames(move, "upc", "upc_num")
+products[, upc_num := as.integer64(upc)]
+setkeyv(move, c("upc_num", "upc_ver_uc"))
+setkeyv(products, c("upc_num", "upc_ver_uc"))
+products[, keurig:=as.integer(ptype=="KEURIG")]
+move = move[products[,.(upc_num, upc, upc_ver_uc, brand_descr, series)], nomatch=0L]
+move[, upc_num:=NULL]
+gc()
 
 # Only consider purchases of Keurig Machines -- not anything else.
 move = move[brand_descr=="KEURIG", ]
 move = move[!is.na(series)]
+setnames(move, "imputed_price", "price")
 
 # Obtain the list of retailers, stores, by week - to be used to understand variety in selection.
 store_first_last_week= move[, .(first_week_observed = min(week_end), last_week_end = max(week_end)), 
@@ -447,6 +466,7 @@ multireg = multinom(hseries ~ ., data = hh_demo_series, maxit = 300)
 multiregs = stepAIC(multireg)
 hh_demo_series[, pseries := predict(multireg)]
 hh_demo_series[, table(pseries==hseries)] ## Not very predictive...
+hh_list[, panel_year:=NULL]
 setnames(hh_list, "panel_year", "adoption_panel_year")
 # ----------------------------------------------------------------------------------------------------#
 # Construct Hardware price index within retailer - take the average for series 3 and 4, 

@@ -158,20 +158,6 @@ load('Data/Bayes-MCMC/MDCEV-MCMC-All-30000.RData')
 bindv[, ,27:28] = exp(bindv[, ,27:28])/(1+exp(bindv[, ,27:28]))
 pref = colMeans(bindv[indx, ,], 2)
 rownames(pref) = hh_code_list[, household_code]
-
-# Obtain mean and variance of spending in coffee for each trip -- 
-# caveat (consumer spend more after adoption !!!)
-hh_spent = purchases[product_module_code==1463, .(total_price_paid = sum(total_price_paid), 
-                                                  coupon_value = sum(coupon_value)),
-                     by = c("household_code", "trip_code_uc")]
-hh_spent = hh_spent[total_price_paid>0.01, ]
-hh_spent = hh_spent[, .(E = mean(log(total_price_paid)), Esd = sd(log(total_price_paid))), 
-                    by = "household_code"]
-hh_spent = hh_spent[household_code%in%hh_code_list[, household_code], ]
-hh_spent = hh_spent[, cbind(E, Esd, household_code)]
-rownames(hh_spent) = hh_spent[, 3]
-hh_spent = hh_spent[,1:2]
-hh_spent = hh_spent[order(row.names(hh_spent)), ]
 pref = pref[order(row.names(pref)), ]
 pref = cbind(pref, hh_spent)
 
@@ -203,8 +189,8 @@ save(hh_trip_prob, retailer_panel, hh_panel, pref, bhatd, hh_codes,
      file = "Data/Machine-Adoption/MU-Diff-Asist.RData")
 
 # Compute the adoption value consumer by consumer
-xvars = c(paste0("a", 2:15), "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
-          "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag")
+xvars = c(paste0("a", 2:16), "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
+          "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", "...", "...", "...")
 xnames = c("0OTHER", brands, "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
            "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag")
 
@@ -249,9 +235,9 @@ hhValFun<-function(i){
   for (j in 1:1000){
     # Simulate eps
     hh_retailers_temp[, eps:=-log(-log(runif(nobs)))]
-    # Simulate E
-    E = exp(rnorm(1, mean=pref[as.character(i), 29], sd= pref[as.character(i), 30]))
     
+    # Simulate eps0
+
     # Compute the utility in the scenario
     hh_retailers_temp[, `:=`(UE = 1/price * exp(zb + eps)*(E/price+1)^(alpha-1),
                              U0 = 1/price * exp(zb + eps))]

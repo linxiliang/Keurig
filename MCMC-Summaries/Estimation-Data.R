@@ -26,6 +26,7 @@ graph_dir = "Tabfigs/MCMC-Summaries/"
 # Load Estimation Data
 load(paste(input_dir,"MDC-Cond-Purchase-Flavors.RData",sep=""))
 load(paste(meta_dir,"HH.RData",sep=""))
+hh_market_prod[grepl("KEURIG", brand_descr), keurig:=1]
 
 # Obtain the list of DMAs interested in. 
 hh_num = hh_demo[, .(nh = .N), by = "dma_code"]
@@ -45,13 +46,10 @@ big_markets_name = c("New York", "Chicago", "Los Angeles", "Philadelphia", "Tamp
                      "West Palm Beach - Fort Pierce", "San Antonio", "Buffalo", "Baltimore", 
                      "Hartford - New Haven", "Harrisburg Area PA", "Providence - New Bedford")
 
-brands = c("0OTHER", "CARIBOU KEURIG", "CHOCK FULL O NUTS", "CTL BR", "DONUT HOUSE KEURIG", "DUNKIN' DONUTS",
+brands = c("0NOTHING", "0OTHER", "CARIBOU KEURIG", "CHOCK FULL O NUTS", "CTL BR", "DONUT HOUSE KEURIG", "DUNKIN' DONUTS",
            "EIGHT O'CLOCK", "FOLGERS", "FOLGERS KEURIG", "GREEN MOUNTAIN KEURIG", "MAXWELL HOUSE", 
            "NEWMAN'S OWN ORGANICS KEURIG", "STARBUCKS", "STARBUCKS KEURIG", "TULLY'S KEURIG")
 features = c("brand", "keurig", "flavored", "lightR", "medDR", "darkR", "assorted", "kona", "colombian", "sumatra", "wb")
-xnames = c(brands, features[2:length(features)], "brand_lag_keurig", "brand_lag", 'ground_alpha', 'keurig_alpha')
-alist = paste0("a", c(2:(length(brands)+1)))
-nv = 20
 
 p_table = matrix(rep(0, length(big_markets)*13), nrow=length(big_markets))
 i = 0
@@ -75,7 +73,8 @@ for (mcode in big_markets){
                              sum((1-keurig)*purchased*size)]
   p_table[i, 11] = temp_dt[, sum(keurig*purchased*price*size)/
                              sum(keurig*purchased*size)]
-  brand_freq = temp_dt[brand_descr!="0OTHER", .(revenue = sum(purchased*size*price)), by = c("brand_descr", "keurig")]
+  brand_freq = temp_dt[!(brand_descr%in%c("0NOTHING", "0OTHER")), 
+                       .(revenue = sum(purchased*size*price)), by = c("brand_descr", "keurig")]
   p_table[i, 12] =  brand_freq[keurig==0 & brand_descr!="CTL BR", ][revenue==max(revenue), brand_descr]
   p_table[i, 13] =  brand_freq[keurig==1 & brand_descr!="CTL BR", ][revenue==max(revenue), brand_descr]
 }

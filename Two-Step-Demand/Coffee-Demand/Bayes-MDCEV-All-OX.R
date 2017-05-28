@@ -53,13 +53,13 @@ set.seed(1234567)
 #   list(host='bushgcn06',user='xlin0',
 #        ncore=20)
 #   )
-primary <- 'bushgcn35'
+primary <- 'bushgcn33'
 machineAddresses <- list(
   list(host=primary, user='xlin0',
        ncore=40),
-  list(host='bushgcn36',user='xlin0',
+  list(host='bushgcn34',user='xlin0',
        ncore=40),
-  list(host='bushgcn37',user='xlin0',
+  list(host='bushgcn38',user='xlin0',
        ncore=40)
   )
 
@@ -132,9 +132,9 @@ if (market_code != "all"){
 
 source(paste(code_dir, 'Preprocessing-O1.R', sep=""))
 
-# Reassign hh and t
+# Reassign hh and t if needed
 setkey(hh_market_prod, household_code, t, brand_descr, keurig, roast, brand_descr_orig)
-hh_market_prod[, hh := .GRP, by = "hh"]
+hh_market_prod[, hh:= .GRP, by = "hh"]
 setkey(hh_market_prod, hh, t)
 hh_market_prod[, t := .GRP, by = "t"]
 
@@ -159,7 +159,7 @@ hh_full = copy(hh_market_prod)
 # Obtain the list of households
 hh_n_list = hh_full[, unique(hh)]
 ncl = length(cl)
-nhsize = ceiling(length(hh_n_list)/ncl)
+nhsize = floor(length(hh_n_list)/ncl)
 
 # Put each chunk of data to the data.table
 for (i in 1:ncl){
@@ -180,7 +180,7 @@ for (i in 1:ncl){
 nz = length(znames) + 1
 nk = ncol(KMat)
 nx = ncol(XMat)
-np = nk+nx+1# if sigma is estimated, put + 1
+np = nk+nx# if sigma is estimated, put + 1
 nh = length(hh_full[, unique(hh)])
 nt = length(hh_full[, unique(t)])
 clusterExport(cl, c('xnames', 'znames', 'detfun', 'll', 'ihessfun', 'input_dir', "nk", "nx", "np", "nh"))
@@ -193,13 +193,13 @@ invisible(clusterEvalQ(cl, load(paste(input_dir, "/HH-Aux-Market.RData", sep="")
 b0 = rnorm(np)
 opt0 = optim(b0, ll_homo, gr = NULL, method = c("BFGS"), control = list(reltol=1e-16))
 hess = hessian(ll_homo, opt0$par, h = 1e-4)
-save(opt0, hess, file = paste(input_dir, "/Homo-Hessian-OX2.RData", sep=""))
+save(opt0, hess, file = paste(input_dir, "/Homo-Hessian-OX-NoGS.RData", sep=""))
 
 # Evaluate Hessian at Fractional likelihood
-invisible(clusterEvalQ(cl, load(paste(input_dir, "/Homo-Hessian-OX2.RData", sep=""))))
+invisible(clusterEvalQ(cl, load(paste(input_dir, "/Homo-Hessian-OX-NoGS", sep=""))))
 hess_list = clusterEvalQ(cl, lapply(hh_list, ihessfun))
 hess_list = unlist(hess_list, recursive=F)
-save(opt0, hess, hess_list, file = paste(input_dir, "/Hessian-OX2.RData", sep=""))
+save(opt0, hess, hess_list, file = paste(input_dir, "/Hessian-OX-NoGS.RData", sep=""))
 # save(opt0, hess, hess_list, file = paste(input_dir, "/Posterior-Variance.RData", sep=""))
 gc()
 #---------------------------------------------------------------------------------------------------------#
@@ -207,7 +207,7 @@ gc()
 # MCMC Settings
 burnin = 0
 thin   = 5
-draws  = 3000
+draws  = 4000
 tunein = 0
 totdraws = draws*thin + burnin
 
@@ -221,12 +221,13 @@ Dbar = matrix(rep(0, nz*np), nrow=nz)
 s2 = 2.93^2/np;
 
 # Distribute the functions and relevant data to the workers.
-invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hessian-OX2.RData", sep=""))))
+invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hessian-OX-NoGS.RData", sep=""))))
 # invisible(clusterEvalQ(cl, load(paste(input_dir, "/Posterior-Variance.RData", sep=""))))
 clusterExport(cl,c('i_ll', 'rwmhd', 'prefrun', 's2', 'tunein'))
 invisible(clusterEvalQ(cl, (Z_i=cbind(rep(1, nrow(hh_demo_chunk)), as.matrix(hh_demo_chunk[, znames, with=F])))))
 invisible(clusterEvalQ(cl, (beta_dt=data.table(matrix(opt0$par+rnorm(length(hh_list)*np, mean=0, sd=10), 
                                                       ncol=length(hh_list))))))
+
 invisible(clusterEvalQ(cl, setnames(beta_dt, names(beta_dt), as.character(hh_list))))
 beta0 = invisible(clusterEvalQ(cl, beta_dt))
 bhnames = as.integer(unlist(lapply(beta0, names)))
