@@ -79,7 +79,7 @@ purchases = purchases[, .(total_price_paid = sum(total_price_paid),
 setkeyv(purchases, c("upc", "upc_ver_uc"))
 purchases=purchases[products[, .(upc, upc_ver_uc, upc_descr, ptype, 
                                  brand_descr, size1_amount, multi, series)], nomatch=0L]
-purchases[, month:=as.factor(format(purchase_date, '%Y-%m'))]
+purchases[, month_var:=as.factor(format(purchase_date, '%Y-%m'))]
 
 # Focus on the platform of choice
 purchases = purchases[ptype=="KEURIG" & brand_descr=="KEURIG", ]
@@ -139,14 +139,7 @@ trips = trips[dma_code %in% top_dma_list, ]
 #---------------------------------------------------------------------------------------------------#
 
 # Define week_end to be the saturday ending that week. 
-first_week_end = as.Date("2005-12-10")
-max_purchase_date = purchases[, max(purchase_date)]
-purchases[purchase_date<=first_week_end, week_end:=first_week_end]
-cweek = first_week_end
-while (cweek < max_purchase_date){
-  cweek = cweek + 7
-  purchases[purchase_date<=cweek & is.na(week_end), week_end:=cweek]
-}
+purchases[, week_end:=wkend(purchase_date)]
 
 # Adjust price to average price per unit of serving
 purchases[, price_paid := (total_price_paid - coupon_value)/(quantity)]
@@ -257,12 +250,13 @@ store_exists_panel = store_exists_panel[stores[, .(store_code_uc, panel_year, dm
 setkey(store_exists_panel, dma_code, retailer_code, store_code_uc, week_end)
 
 # Filter out outliers
-move[, pmedian:=median(price), by = c("upc", "upc_ver_uc")]
+move[, pmedian:=median(price, na.rm=T), by = c("upc", "upc_ver_uc")]
 move = move[price<=2*pmedian & price>=(1/3 * pmedian), ]
 
 # Obtain the average and median price by retailer.
 rms_hw_prices = move[, .(price_avg=mean(price), price_mid = median(price), price_sd = sd(price), 
-                         revenue = sum(units * price), units = sum(units), nstores = length(unique(store_code_uc))), 
+                         base_price=median(base_price, na.rm=T), revenue = sum(units * price), 
+                         units = sum(units), nstores = length(unique(store_code_uc))), 
                      by = c("retailer_code", "series", "week_end")]
 setkeyv(rms_hw_prices, c("retailer_code", "series", "week_end"))
 
@@ -270,7 +264,8 @@ setkeyv(rms_hw_prices, c("retailer_code", "series", "week_end"))
 rms_hw_prices[, row:=1:.N]
 retailer_series_position = rms_hw_prices[, list(start=min(row), end=max(row)), 
                                          by = c("retailer_code", "series")]
-rms_hw_prices[, price_regular:=baseprice(retailer_series_position, rms_hw_prices, 14)]
+rms_hw_prices[, base_price2:=baseprice(retailer_series_position, rms_hw_prices, 14)]
+rms_hw_prices[, price_regular:=ifelse(is.na(base_price)|base_price<price_mid, base_price2, base_price)]
 
 # Filter weeks where less than 15% of the stores sold the product -- probably the product is not available. 
 nstore_panel = store_exists_panel[, .(tot_stores = .N), by = c("retailer_code", "week_end")]
@@ -282,6 +277,7 @@ rms_hw_prices = rms_hw_prices[nstores/tot_stores>=0.15 & tot_stores>=5, ]
 # Get rid of retailers with less than a year of data (52 Weeks).
 rms_hw_prices[, nweek:=.N, by = "retailer_code"]
 rms_hw_prices = rms_hw_prices[nweek>=52, ]
+rms_hw_prices[price_mid>=price_regular, price_mid := price_regular] # Likely measurement error
 save(rms_hw_prices, file = paste(output_dir, "/RMS-HW-Prices.RData", sep=""))
 
 # Check cross series price correlation
@@ -437,14 +433,7 @@ setkey(hw_prices, retailer_code)
 hw_prices = hw_prices[retailers, nomatch=0L]
 
 # Define week_end to be the saturday ending that week. 
-first_week_end = as.Date("2004-01-03")
-max_trip_date = trips[, max(purchase_date)]
-trips[purchase_date<=first_week_end, week_end:=first_week_end]
-cweek = first_week_end
-while (cweek <= max_trip_date){
-  cweek = cweek + 7
-  trips[purchase_date<=cweek & is.na(week_end), week_end:=cweek]
-}
+trips[, week_end:=wkend(purchase_date)]
 
 # Look at whether demographics and other characteristics predict adoption and series adopted
 # Not very predictive...
@@ -504,7 +493,7 @@ hh_retailer_trips=trips[, .(ntrips = .N), by = c("household_code", "dma_code",
 setkey(retailer_share, retailer_code, panel_year)
 setkey(hh_retailer_trips, retailer_code, panel_year)
 retailer_share = hh_retailer_trips[retailer_share, nomatch = 0L]
-retailer_share[, np:=ifelse(np<=3, 0, np)] # at least 3 purchases
+#retailer_share[, np:=ifelse(np<=3, 0, np)] # at least 3 purchases
 retailer_share[, nweight := (np*ntrips)/10000]
 
 # Merge in price
@@ -515,16 +504,16 @@ setkey(retailer_share, retailer_code, panel_year)
 setkey(hw_prices, retailer_code, panel_year)
 hw_p_index = hw_prices[retailer_share, nomatch=0L, allow.cartesian=TRUE]
 hw_p_index = hw_p_index[series==3 | series==4 | series==5, ]
-hw_prices[series==3, `:=`(price = price + 30)]
-hw_prices[series==5, `:=`(price = price - 30)]
+hw_p_index[series==3, `:=`(price = price + 30, price_regular = price_regular+30)]
+hw_p_index[series==5, `:=`(price = price - 30, price_regular = price_regular-30)]
 hw_p_index0 = hw_p_index[!(retailer_code %in% warehouse_retailers),
                          .(price=sum(price*nweight)/sum(nweight),
                            price_regular=sum(price_regular*nweight)/sum(nweight),
                            warehouse=0), 
                          by = c("household_code", "series", "dma_code", "week_end")]
 hw_p_index1 = hw_p_index[,.(price=sum(price*nweight)/sum(nweight),
-                           price_regular=sum(price_regular*nweight)/sum(nweight),
-                           warehouse=1), 
+                            price_regular=sum(price_regular*nweight)/sum(nweight),
+                            warehouse=1), 
                          by = c("household_code", "series", "dma_code", "week_end")]
 hw_p_index = rbindlist(list(hw_p_index0, hw_p_index1))
 rm(hw_p_index0, hw_p_index1)
@@ -546,7 +535,7 @@ hw_p_index = hw_p_index[!is.na(price), ]
 # Select household base on actual status 
 hw_p_index[, panel_year := year(week_end)]
 hw_p_index[, quarter := paste(format(week_end, "%y/"), 0, 
-                             sub( "Q", "", quarters(week_end) ), sep = "")]
+                              sub( "Q", "", quarters(week_end) ), sep = "")]
 setkey(hw_p_index, household_code, panel_year, warehouse)
 setkey(hh_ware_status, household_code, panel_year, warehouse)
 hw_p_index = hw_p_index[hh_ware_status, nomatch=0L]

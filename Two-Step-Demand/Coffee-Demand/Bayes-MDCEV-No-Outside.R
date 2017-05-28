@@ -297,7 +297,7 @@ inx = seq(1, 10000, 4)
 #      file = paste(output_dir, "MDCEV-MCMC-All-30000.RData", sep = ""))
 stopCluster(cl)
 
-inx = seq(1, 3333, 3)
+inx = seq(1, 12000, 5)
 bindv = bindv[inx,,]
 save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, 
      file = paste(output_dir, "MDCEV-MCMC-No-Outside-Adopters.RData", sep = ""))

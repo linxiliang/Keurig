@@ -172,8 +172,8 @@ vfun_ev <- function(m0, rho, alpha, u0, price){
 Uf <- function(e) -(sum(psi/alpha * ((e/price+1)^(alpha)-1)))^rho + exp(m0)*sum(e)
 
 # Replications and simulations
-nprod = 5
-nt = 2000
+nprod = 40
+nt = 500
 n = nprod*nt
 zx = rnorm(nprod)
 keurig = c(rep(1, ceiling(nprod/2)), rep(0, (nprod-ceiling(nprod/2))))
@@ -190,7 +190,7 @@ nx = length(xnames)
 nk = 2
 np = nx + nk + 1
 
-nsim = 100
+nsim = 1
 EB = matrix(rep(0, np*nsim), ncol=np)
 for (k in 1:nsim){
   

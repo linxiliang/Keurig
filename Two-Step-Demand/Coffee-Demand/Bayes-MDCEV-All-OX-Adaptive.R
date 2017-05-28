@@ -53,13 +53,13 @@ set.seed(1234567)
 #   list(host='bushgcn06',user='xlin0',
 #        ncore=20)
 #   )
-primary <- 'bushgcn33'
+primary <- 'bushgcn30'
 machineAddresses <- list(
   list(host=primary, user='xlin0',
        ncore=40),
-  list(host='bushgcn34',user='xlin0',
+  list(host='bushgcn31',user='xlin0',
        ncore=40),
-  list(host='bushgcn38',user='xlin0',
+  list(host='bushgcn32',user='xlin0',
        ncore=40)
   )
 
@@ -221,7 +221,7 @@ Dbar = matrix(rep(0, nz*np), nrow=nz)
 s2 = 2.93^2/np;
 
 # Distribute the functions and relevant data to the workers.
-invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hessian-OX-NoGS.RData", sep=""))))
+invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hessian-OX2.RData", sep=""))))
 # invisible(clusterEvalQ(cl, load(paste(input_dir, "/Posterior-Variance.RData", sep=""))))
 clusterExport(cl,c('i_ll', 'rwmhd', 'prefrun', 's2', 'tunein'))
 invisible(clusterEvalQ(cl, (Z_i=cbind(rep(1, nrow(hh_demo_chunk)), as.matrix(hh_demo_chunk[, znames, with=F])))))
@@ -232,6 +232,11 @@ invisible(clusterEvalQ(cl, setnames(beta_dt, names(beta_dt), as.character(hh_lis
 beta0 = invisible(clusterEvalQ(cl, beta_dt))
 bhnames = as.integer(unlist(lapply(beta0, names)))
 beta0 = matrix(t(unlist(beta0)), ncol=np, byrow=T)
+
+# Intialize the tuning dataset
+invisible(clusterEvalQ(cl, (ac_dt=data.table(hh=hh_list))))
+invisible(clusterEvalQ(cl, ac_dt[, `:=`(nd=0,nac=0,lambda=1)]))
+invisible(clusterEvalQ(cl, setkey(ac_dt, hh)))
 
 #Initialize storage of MCMC draws
 bhatd = matrix(rep(0, draws*np), nrow=draws)

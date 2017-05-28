@@ -127,24 +127,33 @@ rwmhd <- function(i){
   bhat_i = bhat_chunk[as.character(i), ]
   # Obtain root of population variance matrix
   csig = backsolve(chol(sig), diag(np))
-  
+
+  # Tune lambda
+  ac_dt[.(i), acrate:=nac/nd]
+  if (ac_dt[.(i), acrate]>0.35&ac_dt[.(i), nd]>=50) ac_dt[.(i), `:=`(lambda=1.10*lambda, nd=0, nac=0)]
+  if (ac_dt[.(i), acrate]<0.15&ac_dt[.(i), nd]>=50) ac_dt[.(i), `:=`(lambda=0.90*lambda, nd=0, nac=0)]
+   
   # Proposals
-  cov_i = s2 * solve(hess_list[[i]] + solve(sig))
-  
-  #cov_i = s2 * sig
+  cov_i = s2 * chol2inv(chol(hess_list[[i]] + chol2inv(chol(sig))))
   orig = unlist(beta_dt[, as.character(i), with=F], recursive = T, use.names = F)
   evals = eigen(cov_i)
   if (any(evals$values<0)){
-    prop = c(orig + mvrnorm(1, rep(0, np), sig))
+    prop = orig + ac_dt[.(i), lambda]*mvrnorm(1, rep(0, np), sig)
   } else{
-    prop = c(orig + mvrnorm(1, rep(0, np), cov_i))
+    prop = orig + ac_dt[.(i), lambda]*mvrnorm(1, rep(0, np), cov_i)
   }
   
   # Walking step
   ratio = exp(i_ll(prop, i=i)+lndMvn(prop, bhat_i, csig)-i_ll(orig, i=i)-lndMvn(orig, bhat_i, csig))
   alpha = min(1, ratio)
   alpha = ifelse(is.na(alpha), 0, alpha) # Outlier should have no chance of being accepted.
-  if (runif(1) <= alpha) return(prop) else return(orig)
+  ac_dt[.(i), nd:=nd+1]
+  if (runif(1) <= alpha) {
+    ac_dt[.(i), nac:=nac+1]
+    return(prop) 
+  } else {
+    return(orig)
+  }
 }
 
 # Wrapper for preference estimation
