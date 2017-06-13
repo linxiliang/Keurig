@@ -38,7 +38,7 @@ set.seed(12345)
 
 #---------------------------------------------------------------------------------------------------------# 
 # Initialize Parallel Execution Environment
-primary <- 'bushgcn01'
+# primary <- 'bushgcn01'
 # machineAddresses <- list(
 #   list(host=primary, user='xlin0',
 #        ncore=20),
@@ -273,7 +273,8 @@ for (d in 1:totdraws){
     bhatd[indx,] = bhat; 
     deltad[indx,] = delta;
     sigd[, ,indx] = sig; 
-    if (d > tunein) bindv[indx - ceiling((tunein - burnin)/thin), ,] = beta0;
+    bnorder = order(bhnames)
+    if (d > tunein) bindv[indx - ceiling((tunein - burnin)/thin), ,] = beta0[bnorder, ];
   }
   
   # RW MH to draw betas for each household

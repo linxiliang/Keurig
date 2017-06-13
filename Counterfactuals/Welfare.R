@@ -27,6 +27,9 @@ code_dir = "Scripts/Counterfactuals/"
 # Set seed
 RNGkind("L'Ecuyer-CMRG")
 set.seed(12345)
+# Source function
+source('Scripts/Counterfactuals/machine-functions.R')
+Rcpp::sourceCpp('Scripts/Counterfactuals/CoffeeValue.cpp')
 #-----------------------------------------------------------------------------#
 # Initialize Parallel Execution Environment
 cores = detectCores(logical=TRUE)
@@ -38,6 +41,8 @@ invisible(clusterEvalQ(cl, library(data.table)))
 invisible(clusterEvalQ(cl, setNumericRounding(0)))
 invisible(clusterEvalQ(cl, setwd('~/Keurig')))
 invisible(clusterEvalQ(cl, RNGkind("L'Ecuyer-CMRG")))
+invisible(clusterEvalQ(cl, source('Scripts/Counterfactuals/machine-functions.R')))
+invisible(clusterEvalQ(cl, Rcpp::sourceCpp('Scripts/Counterfactuals/CoffeeValue.cpp')))
 
 # Set seed for each workers
 s = .Random.seed
@@ -48,67 +53,6 @@ for (i in 1:length(cl)) {
 }
 invisible(clusterEvalQ(cl, .Random.seed <- s))
 #---------------------------------------------------------------------------------------------------#
-# Function
-# Solve Lambda
-BC<-function(lambda, alpha, zb, p, eps, E) return(sum(p*(exp((log(lambda)+log(p)-zb-eps)/(alpha-1))-1))-E)
-
-# Obtain the mariginal utility at each product
-EXPEND<-function(lambda, alpha, zb, p, eps, E) return(p*(exp((log(lambda)+log(p)-zb-eps)/(alpha-1))-1))
-
-# Solve the utility maximization problem
-eu <- function(umin, umax, alpha, zb, p, eps, E){
-  if (length(p)==1){
-    return((1/alpha * exp(zb + eps) * ((E/p + 1)^alpha-1)))
-  } else{
-    n0 = length(p)
-    ind0 = seq(1, n0)
-    dfx = 10
-    while(dfx>0){
-      kr = uniroot(BC, c(umin, umax), alpha = alpha[ind0],
-                   zb = zb[ind0], p = p[ind0], eps = eps[ind0], E = E, tol=1e-16)
-      Spent = EXPEND(kr$root, alpha, zb, p, eps, E)
-      ind0 = which(Spent>0)
-      n1 = length(ind0)
-      if (n1==1){
-        dfx=0
-      } else{
-        dfx=n0-n1
-        n0=n1
-      }
-    }
-    if (n1==1){
-      return(1/alpha[ind0] * exp(zb[ind0] + eps[ind0]) * ((E/p[ind0] + 1)^alpha[ind0]-1))
-    } else{
-      return(sum(1/alpha[ind0] * exp(zb[ind0] + eps[ind0]) *
-                   ((Spent[ind0]/p[ind0] + 1)^alpha[ind0]-1)))
-    }
-  }
-}
-
-# For given availability and preference parameters
-vfun = function(E, alpha, zb, p, eps, u){
-  UE = 1/p * exp(zb + eps)*(E/p+1)^(alpha-1)
-  U0 = 1/p * exp(zb + eps)
-  sind = which(U0>max(UE))
-  umin = min(UE[sind])-0.00000001
-  umax = max(U0[sind])+0.00000001
-  return(eu(umin, umax, alpha[sind], zb[sind], p[sind], eps[sind], E) - u)
-}
-
-CVfun<-function(alpha, zb, p, eps, u){
-  umax = u
-  udiff = vfun(umax, alpha = alpha, zb=zb, p = p, eps = eps, u = u)
-  while(udiff < 0){
-    umax = 10*umax
-    udiff = vfun(umax, alpha = alpha, zb=zb, p = p, eps = eps, u = u)
-  }
-  CV = uniroot(vfun, c(0.001, umax), alpha = alpha, 
-               zb=zb, p = p, eps = eps, u = u, tol=1e-16)
-  return(CV$root)
-}
-clusterExport(cl, c('BC', 'EXPEND', 'eu', 'vfun', 'CVfun'))
-
-#------------------------------------------------------------------------------#
 # Load data
 load(paste(data_input_dir, "MDC-Cond-Purchase-Flavors.RData", sep=""))
 hh_market_prod[keurig==1&(!grepl("KEURIG", brand_descr_orig)), brd := paste(brand_descr_orig, "KEURIG")]
@@ -121,7 +65,6 @@ thirdp_brands = setdiff(unique(hh_market_prod[keurig==1, brd]),
 hh_market_prod[, `:=`(owned=as.integer(brd%in%owned_brands),
                       licensed=as.integer(brd%in%licensed_brands),
                       thirdp=as.integer(brd%in%thirdp_brands))]
-
 setkeyv(hh_market_prod, c("household_code", "t", "brand", "roast"))
 
 # Do the welfare analysis only for households on the platform
@@ -135,24 +78,58 @@ hh_market_prod = hh_market_prod[any_ground>=5&total_trip_paid>=1, ]
 hh_market_prod[, `:=`(any_ground=NULL, total_trip_paid=NULL)]
 
 # Take the last part of markov chain to estimate consumer preferences
-indx = seq(1001, 2500, 1)
-load('Data/Bayes-MCMC/MDCEV-MCMC-All-30000.RData')
-bindv[, ,27:28] = exp(bindv[, ,27:28])/(1+exp(bindv[, ,27:28]))
+indx = seq(501, 1000, 1)
+load('Data/Bayes-MCMC/MDCEV-MCMC-OX.RData')
+bindv[, ,29:31] = exp(bindv[, ,29:31])/(1+exp(bindv[, ,29:31]))
 pref = colMeans(bindv[indx, ,], 2)
 rownames(pref) = hh_code_list[, household_code]
+pref = pref[order(row.names(pref)), ]
+rm(bindv)
+gc()
 hh_market_prod = hh_market_prod[household_code%in%hh_code_list[, household_code], ]
 
+# Update the number of products
+hh_market_prod[, nbrand:=log(nbrand)]
+setnames(hh_market_prod, "nbrand", "nbrand_all")
+hh_market_prod[thirdp==1, `:=`(nbrand_own = length(unique(brand_descr_orig)) + 0.0), 
+               by = c("hh", "t")]
+hh_market_prod[licensed==1, `:=`(nbrand_licensed = length(unique(brand_descr_orig)) + 0.0), 
+               by = c("hh", "t")]
+hh_market_prod[, `:=`(nbrand_own = mean(nbrand_own, na.rm=T), nbrand_licensed = mean(nbrand_licensed, na.rm=T)),
+               by = c("hh", "t")]
+hh_market_prod[is.na(nbrand_own) | is.infinite(nbrand_own), nbrand_own:=0]
+hh_market_prod[is.na(nbrand_licensed) | is.infinite(nbrand_licensed), nbrand_licensed:=0]
+hh_market_prod[keurig==1 | grepl(" KEURIG", brand_descr), 
+               `:=`(nbrand_own = log(round(exp(nbrand_all))-nbrand_own-nbrand_licensed),
+                    nbrand_licensed = log(round(exp(nbrand_all))-nbrand_own))]
+hh_market_prod[(keurig==0 & !grepl(" KEURIG", brand_descr)), `:=`(nbrand_own = nbrand_all, nbrand_licensed = nbrand_all)]
+hh_market_prod[is.na(nbrand_own) | is.infinite(nbrand_own), nbrand_own:=0]
+hh_market_prod[is.na(nbrand_licensed) | is.infinite(nbrand_licensed), nbrand_licensed:=0]
+
 # Generate the corresponding zb and alpha
-xvars = c(paste0("a", 2:15), "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
-          "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag")
+# Compute the adoption value consumer by consumer
+xvars_all = c(paste0("a", 2:16), "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
+              "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", "nbrand_all")
+xvars_own = c(paste0("a", 2:16), "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
+              "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", "nbrand_own")
+xvars_licensed = c(paste0("a", 2:16), "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
+                   "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", "nbrand_licensed")
+setkeyv(hh_market_prod, c("household_code", "hh", "t"))
 hh_list = unique(hh_market_prod[, household_code])
 for (h in hh_list){
-  xmat = as.matrix(hh_market_prod[.(h), xvars, with=FALSE])
+  xmat_all = as.matrix(hh_market_prod[.(h), xvars_all, with=FALSE])
+  xmat_own = as.matrix(hh_market_prod[.(h), xvars_own, with=FALSE])
+  xmat_licensed = as.matrix(hh_market_prod[.(h), xvars_licensed, with=FALSE])
   kmat = as.matrix(hh_market_prod[.(h), cbind(1-keurig, keurig)])
+  
   # Compute the quality of product
-  hh_market_prod[.(h), zb := xmat %*% pref[as.character(h), 1:26]]
+  hh_market_prod[.(h), zb_all := xmat_all %*% pref[as.character(h),1:28]]
+  hh_market_prod[.(h), zb_own := xmat_own %*% pref[as.character(h),1:28]]
+  hh_market_prod[.(h), zb_licensed := xmat_licensed %*% pref[as.character(h),1:28]]
   # Compute the alpha of the product
-  hh_market_prod[.(h), alpha := kmat %*% pref[as.character(h), 27:28]]
+  hh_market_prod[.(h), alpha := kmat %*% pref[as.character(h), 29:30]]
+  # Compute the rho
+  hh_market_prod[.(h), rho := pref[as.character(h), 31]]
 }
 
 # Obtain the list of households
@@ -162,6 +139,7 @@ ncl = length(cl)
 nhsize = ceiling(length(hh_n_list)/ncl)
 
 # Put each chunk of data to the data.table
+setkey(hh_full, household_code, t)
 for (i in 1:ncl){
   i_start = (i-1)*nhsize+1
   i_end = i*nhsize
@@ -170,59 +148,55 @@ for (i in 1:ncl){
   }
   hh_list = hh_n_list[i_start:i_end]
   hh_market_prod = hh_full[household_code%in%hh_list, ]
+  setkey(hh_market_prod, household_code, t)
   clusterExport(cl[i], c('hh_list', 'hh_market_prod'))
 }
 
 clusterEvalQ(cl, (nr=nrow(hh_market_prod)))
 
-hhcv = function(){
-  hh_market_prod[, `:=`(eps=-log(-log(runif(nr))))]
-  hh_market_prod[, `:=`(EC=sum(total_price_paid)), by = c("household_code", "t")]
-  hh_market_prod[,  uall := vfun(EC[1], alpha, zb, price, eps, 0), by = c("household_code", "t")]
-  temp1 = hh_market_prod[licensed==0&thirdp==0, .(cv_all = CVfun(alpha, zb, price, eps, uall[1])), 
-                         by = c("household_code", "t")]
-  temp1[, ktype := "GMCR Only"]
-  temp2 = hh_market_prod[licensed==0, .(cv_all = CVfun(alpha, zb, price, eps, uall[1])), 
-                         by = c("household_code", "t")]
-  temp2[, ktype := "GMCR+Third Party"]
-  temp3 = hh_market_prod[thirdp==0, .(cv_all = CVfun(alpha, zb, price, eps, uall[1])), 
-                         by = c("household_code", "t")]
-  temp3[, ktype := "GMCR+Licensed"]
-  return(rbindlist(list(temp1, temp2, temp3)))
+hhcv = function(n){
+  hh_agg = hh_market_prod[, .(cv = list(mc_cvfun(zb_all,zb_own,zb_licensed,alpha, rho, price, keurig, 
+                                                owned, licensed, thirdp, n))), 
+                          by = .(household_code, t)]
+  hh_agg[, `:=`(cv1=sapply(cv, "[[", 1), cv2=sapply(cv, "[[", 2), 
+                cv3=sapply(cv, "[[", 3), gv=sapply(cv, "[[", 4))]
+  return(hh_agg)
 }
 clusterExport(cl, c('hhcv'))
-
-mc_draws = 1000
-hh_agg = hh_full[keurig==0, .(cval = 0), by = c("household_code", "t")]
-nht = nrow(hh_agg)
-hh_agg = rbindlist(list(hh_agg, hh_agg, hh_agg))
-for (i in 1:mc_draws){
-  # Generate the type 1 EV draw
-  hh_temp = clusterEvalQ(cl, hhcv())
-  hh_temp = rbindlist(hh_temp)
-  if (i==1) hh_agg[, `:=`(household_code=hh_temp$"household_code", t=hh_temp$"t", Type=hh_temp$ktype)]
-  hh_agg[, cval := cval + hh_temp$cv_all]
-  cat("Draw", i, "Finished out of", mc_draws, ".\n\n")
-}
-hh_agg[, cval := cval/mc_draws]
-hh_agg = hh_agg[cval<=2000, ]
-# Stop Cluster
-stopCluster(cl)
+hh_agg = clusterEvalQ(cl, hhcv(1000))
+hh_agg = rbindlist(hh_agg)
 save(hh_agg, file = "~/Keurig/Data/Counterfactual/Welfare.RData")
 
 #------------------------------------------------------------------------------#
+# Needs revision!
 # Plot the welfare analysis
 load("~/Keurig/Data/Counterfactual/Welfare.RData")
-hh_agg = hh_agg[, .(cval = sum(cval)), by = c("household_code", "Type")]
-hh_spent = hh_full[, .(total_price_paid = sum(total_price_paid)), by = "household_code"]
+hh_agg = hh_agg[, .(cv_owned = sum(cv1-cv2), cv_licensed=sum(cv1-cv3), cv_val = sum(cv1-gv)), by = c("household_code")]
+hh_spent = hh_full[kholding==1, .(total_price_paid = sum(total_price_paid)), by = "household_code"]
 setkey(hh_agg, household_code)
 setkey(hh_spent, household_code)
 hh_agg=hh_spent[hh_agg, nomatch=0L]
-hh_agg[, cv_percent := 100*cval/(total_price_paid)]
+hh_agg[, `:=`(cv_per_owned = 100*cv_owned/(total_price_paid),
+              cv_per_licensed = 100*cv_licensed/(total_price_paid),
+              cv_per_val = 100*cv_val/(total_price_paid))]
 
 # Plots
+hh_agg_1 = hh_agg[,.(household_code, cv_per_val)]
+setnames(hh_agg_1, "cv_per_val", "cv_percent")
+hh_agg_1[, Type:="Ground Only"]
+hh_agg_2 = hh_agg[,.(household_code, cv_per_owned)]
+setnames(hh_agg_2, "cv_per_owned", "cv_percent")
+hh_agg_2[, Type:="GMCR Owned"]
+hh_agg_3 = hh_agg[,.(household_code, cv_per_licensed)]
+setnames(hh_agg_3, "cv_per_licensed", "cv_percent")
+hh_agg_3[, Type:="GMCR Owned + Licensed"]
+hh_agg = rbindlist(list(hh_agg_1, hh_agg_2, hh_agg_3))
+hh_agg[, Type := factor(Type, levels = c("Ground Only", "GMCR Owned", "GMCR Owned + Licensed"))]
 setkey(hh_agg, Type)
-welgraph = ggplot(hh_agg[cv_percent<=5000, ], aes(x=cv_percent))+
-  geom_histogram(bins=70, aes(y = ..density..), fill = "skyblue")+
+welgraph = ggplot(hh_agg[cv_percent<=302.8918 & cv_percent>=-147.0321, ], aes(x=cv_percent))+
+  geom_histogram(bins=20, aes(y = ..density..), fill = "skyblue", col = "grey75")+
   theme_minimal()+labs(list(x="CV Percent"))+facet_grid(.~Type)
-ggsave(paste(graph_dir, "/figs/welfare_hist.pdf", sep=""), welgraph, width=10, height=4)
+ggsave(paste(graph_dir, "figs/welfare_hist.pdf", sep=""), welgraph, width=10, height=4)
+hh_agg[, quantile(cv_percent, c(0.01, 0.025, 0.05, 0.25,0.50, 0.75, 0.95, 0.975, 0.99)), by = "Type"]
+hh_agg[, mean(cv_percent<0), by = "Type"]
+

@@ -27,7 +27,7 @@ ll <- function(b1, b2, b3, sig=1, K=KMat, X=XMat, idt=hh_samp){
              cons=(1-b3)/(b3*sum(o_i*purchased)) * cons), by = c("hh", "t")]
   
   # Collapse trip level
-  idt_agg = idt[purchased>=1, .(prob=log(abs(detfun(cons, d_c)))+(1-b3)/b3*log(sum(o_i))-log(b3)/b3 +  
+  idt_agg = idt[purchased>=1, .(prob=log(detfun(cons, d_c))+(1-b3)/b3*log(sum(o_i))-log(b3)/b3 +  
                                 sum(Vk)-sum(log(esum))-log(esum[1])), 
                 by = c("hh", "t", "M")]
   idt_agg[, prob := prob - (M)*log(sig) + log(factorial(M))]
@@ -47,8 +47,7 @@ ll_homo <- function(b){
   return(ll(b1, b2, b3))
 }
 
-
-ihessfun <- function(i){
+i_par <- function(i){
   nti = hh_market_prod[.(i), nt_i][1]
   hh_indv_mod = hh_market_prod[.(i), ]
   XIndv = as.matrix(hh_indv_mod[, xnames, with=FALSE])
@@ -62,9 +61,27 @@ ihessfun <- function(i){
     b2 = exp(b2)/(1+exp(b2))
     b3 = exp(b3)/(1+exp(b3))
     fll = 0.9*ll(b1, b2, b3, K=KIndv, X=XIndv, idt = xdt) + 0.1* nti/nsamp *ll(b1, b2, b3)
-    #print(fll)
     return(fll)
   }
+  ise = chol2inv(chol(nti/nsamp * hess)) 
+  optx = opt0$par
+  iold = fll_indv(optx)
+  for (j in 1:30){
+    opt_new = optx + mvrnorm(1, rep(0, np), ise)
+    inew = fll_indv(opt_new)
+    if (inew<iold){
+      iold = inew
+      optx=opt_new
+    }
+  }
+  return(optx)
+}
+
+ihessfun <- function(i){
+  nti = hh_market_prod[.(i), nt_i][1]
+  hh_indv_mod = hh_market_prod[.(i), ]
+  XIndv = as.matrix(hh_indv_mod[, xnames, with=FALSE])
+  KIndv = hh_indv_mod[, cbind(1-keurig, keurig)]
   
   ll_indv <- function(b, xdt=hh_indv_mod){
     b1 = b[1:nx]
@@ -75,9 +92,7 @@ ihessfun <- function(i){
     return(ll(b1, b2, b3, K=KIndv, X=XIndv, idt = xdt))
   }
   
-  iopt = optim(opt0$par, fll_indv, method = c("Nelder-Mead"), 
-               control = list(maxit = 100, reltol=1e-4))
-  ihess = hessian(ll_indv, iopt$par)
+  ihess = hessian(ll_indv, par_list[[i]])
   xhess = 0.9*ihess + 0.1* nti/nsamp * hess
   #print(paste("Finished Working on Individual ", i, ";", sep=""))
   if (any(eigen(xhess)[[1]]<0)){
@@ -130,7 +145,7 @@ rwmhd <- function(i){
 
   # Tune lambda
   ac_dt[.(i), acrate:=nac/nd]
-  if (ac_dt[.(i), acrate]>0.35&ac_dt[.(i), nd]>=50) ac_dt[.(i), `:=`(lambda=1.10*lambda, nd=0, nac=0)]
+  if (ac_dt[.(i), acrate]>0.45&ac_dt[.(i), nd]>=50) ac_dt[.(i), `:=`(lambda=1.10*lambda, nd=0, nac=0)]
   if (ac_dt[.(i), acrate]<0.15&ac_dt[.(i), nd]>=50) ac_dt[.(i), `:=`(lambda=0.90*lambda, nd=0, nac=0)]
    
   # Proposals
@@ -156,19 +171,41 @@ rwmhd <- function(i){
   }
 }
 
+# Wrapper for initial guess
+initrun <- function(){
+  extract_par <-function(i) return(par_list[[i]])
+  dtx = lapply(hh_list, extract_par)
+  beta_dt[, c(as.character(hh_list)) := dtx]
+  return(beta_dt)
+}
+
+# Wrapper for correcting negative infinity
+bcorrect <- function(){
+  cparfun <-function(i) {
+    o_par =  unlist(beta_dt[, as.character(i), with=F], recursive = T, use.names = F)
+    if (i_ll(o_par, i=1)==-Inf) o_par = opt0$par
+    return(o_par)
+  }
+  dtx = lapply(hh_list, cparfun)
+  beta_dt[, c(as.character(hh_list)) := dtx]
+  return(beta_dt)
+}
+
 # Wrapper for preference estimation
 prefrun <- function(){
   .GlobalEnv$bhat_chunk = Z_i %*% Delta
   row.names(.GlobalEnv$bhat_chunk) = hh_list
-  if (d>tunein){
-    hh_list_samp = sort(sample(hh_list, ceiling(length(hh_list)*0.25)))
-    dtx = lapply(hh_list_samp, rwmhd)
-    beta_dt[, c(as.character(hh_list_samp)) := dtx]
+  if (d>tunein | d %% 500==0){
+    # hh_list_samp = sort(sample(hh_list, ceiling(length(hh_list)*0.25)))
+    # hh_list_samp = hh_list
+    dtx = lapply(hh_list, rwmhd)
+    beta_dt[, c(as.character(hh_list)) := dtx]
+    return(beta_dt)
   } else{
     # Sampl 10% of households 
-    hh_list_samp = sort(sample(hh_list, ceiling(length(hh_list)*0.10)))
+    # hh_list_samp = sort(sample(hh_list, ceiling(length(hh_list)*0.10)))
     dtx = lapply(hh_list_samp, rwmhd)
     beta_dt[, c(as.character(hh_list_samp)) := dtx]
+    return(beta_dt[, as.character(hh_list_samp), with = F])
   }
-  return(beta_dt)
 }

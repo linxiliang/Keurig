@@ -132,10 +132,13 @@ ovfun <- function(e1, m0, rho, alpha, u0, price){
     e[1] = e1
     v1 = u0[1]+(alpha[1]-1)*log(e[1]/price[1]+1)
     for (i in 2:n_c){
-      e[i] =  price[i]*(exp((v1-u0[i])/(alpha[i]-1))-1)
+      e[i] = price[i]*(exp((v1-u0[i])/(alpha[i]-1))-1)
     }
   }
-  return(log(rho) + (rho-1)*log(Xifun(e, alpha, psi, price)) + u0[1] + (alpha[1]-1)*log(e1/price[1] + 1) - m0)
+  #print("eval")
+  #print(e)
+  return(log(rho) + (rho-1)*log(Xifun(e, alpha, psi, price)) + u0[1] + 
+           (alpha[1]-1)*log(e1/price[1] + 1) - m0)
 }
 
 ufun <- function(e1, m0, rho, alpha, u0, price){
@@ -155,10 +158,21 @@ ufun <- function(e1, m0, rho, alpha, u0, price){
 
 vfun <- function(m0, rho, alpha, u0, price){
   if (length(u0)==1){
+    cmin = 1e-8
+    cmax = 1e12
+    cminv = cvfun(cmin, m0=m0, rho=rho, alpha=alpha, u0=u0, price=price)
+    cmaxv = cvfun(cmax, m0=m0, rho=rho, alpha=alpha, u0=u0, price=price)
+    #print(cbind(cmin, cmax))
+    #print(cbind(cminv, cmaxv))
+    if (cminv<0) {
+      return(0)
+    } else if (cmaxv>0){
+      return(0)
+    }
     # solve for e1
-    e1v = uniroot(ovfun, c(0.0001, 10000), m0=m0, rho=rho, alpha=alpha, 
+    e1v = uniroot(cvfun, c(cmin, cmax), m0=m0, rho=rho, alpha=alpha, 
                   u0=u0, price=price, tol=1e-16)
-    ufun(e1v$root, m0, rho, alpha, u0, price)
+    return(cufun(e1v$root, m0, rho, alpha, u0, price))
   } else{
     norder = order(u0, decreasing = T)
     nK = length(norder)
@@ -179,15 +193,51 @@ vfun <- function(m0, rho, alpha, u0, price){
       zeta = log(rho) + (rho-1)*log(Xifun(e, alpha, psi, price)) + u0[1] + (alpha[1]-1)*log(e[1]/price[1] + 1)
     }
     # solve for e1
-    e1v = uniroot(ovfun, c(cmin+0.0000001, cmax), m0=m0, rho=rho, alpha=alpha[1:j], 
-                  u0=u0[1:j], price=price[1:j], tol=1e-16)
+    cmin = cmin+1e-8
+    if (cmax>1e12) {cmax=1e12}
+    
+    if (k==nK & zeta>m0) {
+      cmin=e[1] + 1e-8
+      cmax=1e12
+      j = j+1
+    }
+    # Outliers as 0
+    cminv = cvfun(cmin, m0=m0, rho=rho, alpha=alpha[1:j], u0=u0[1:j], price=price[1:j])
+    cmaxv = cvfun(cmax, m0=m0, rho=rho, alpha=alpha[1:j], u0=u0[1:j], price=price[1:j])
+    #print(cbind(cmin, cmax))
+    #print(cbind(cminv, cmaxv))
+    if (cminv<0) {
+      return(0)
+    } else if (cmaxv>0){
+      return(0)
+    }
+    e1v = uniroot(cvfun, c(cmin, cmax), m0=m0, rho=rho, alpha=alpha[1:j], 
+                  u0=u0[1:j], price=price[1:j], tol=1e-18)
     # Given e1 compute utility
-    ufun(e1v$root, m0, rho, alpha[1:j], u0[1:j], price[1:j])
+    return(cufun(e1v$root, m0, rho, alpha[1:j], u0[1:j], price[1:j]))
   }
 }
 
-# Simulation to make sure the algorithm works
-# n = 100
+# MC ufun calculation
+mc_vfun<-function(zb, alpha, rho, price, keurig, n){
+  vfun_i <- function(d, rho, zb, alpha, price, keurig){
+    u0 = zb - log(-log(runif(length(zb))))
+    m0 = rho * (-log(-log(runif(length(1)))))
+    v1 = vfun(m0, rho, alpha, u0, price)
+    if (sum(1-keurig)==0){
+     v2 = 0 
+    } else{
+     gindx = which(keurig==0)
+     v2 = vfun(m0, rho, alpha[gindx], u0[gindx], price[gindx])
+    }
+    return(c(v1,v2))
+  }
+  v_mc = sapply(1:n, vfun_i, rho=rho[1], zb=zb, alpha=alpha, price=price, keurig=keurig)
+  return(rowSums(v_mc)/n)
+}
+
+# # Simulation to make sure the algorithm works
+# n = 40
 # u0 = rnorm(n)
 # price = runif(n)
 # psi = exp(u0 + log(price))

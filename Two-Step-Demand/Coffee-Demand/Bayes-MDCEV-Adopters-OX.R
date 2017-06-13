@@ -213,8 +213,8 @@ gc()
 # MCMC Settings
 burnin = 0
 thin   = 5
-draws  = 3000
-tunein = 0
+draws  = 7000
+tunein = 30000
 totdraws = draws*thin + burnin
 
 ## Auxiliary prior settings, and computations
@@ -231,7 +231,7 @@ invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hessian-Adopters.RData", sep=
 # invisible(clusterEvalQ(cl, load(paste(input_dir, "/Posterior-Variance.RData", sep=""))))
 clusterExport(cl,c('i_ll', 'rwmhd', 'prefrun', 's2', 'tunein'))
 invisible(clusterEvalQ(cl, (Z_i=cbind(rep(1, nrow(hh_demo_chunk)), as.matrix(hh_demo_chunk[, znames, with=F])))))
-invisible(clusterEvalQ(cl, (beta_dt=data.table(matrix(opt0$par+rnorm(length(hh_list)*np, mean=0, sd=10), 
+invisible(clusterEvalQ(cl, (beta_dt=data.table(matrix(rnorm(length(hh_list)*np, mean=0, sd=3), 
                                                       ncol=length(hh_list))))))
 invisible(clusterEvalQ(cl, setnames(beta_dt, names(beta_dt), as.character(hh_list))))
 beta0 = invisible(clusterEvalQ(cl, beta_dt))

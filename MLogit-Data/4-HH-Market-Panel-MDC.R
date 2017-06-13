@@ -15,7 +15,7 @@ load(paste(output_dir, "/hh_trip_panel.RData", sep=""))
 
 # Settings
 year_threshold = 2006
-cond_purch = FALSE
+cond_purch = TRUE
 
 # For the Kim Allenby and Rossi version of the model:
 # (1) We don't need size --- rather an average price
@@ -24,7 +24,8 @@ cond_purch = FALSE
 # Make retail price panel product unique -- not price and size unique
 # (i) Create weights base on overall sales in Homescan
 # (ii) Obtain average price weighted by these sales
-retailer_panel = retailer_panel[price>0.10 | brand_descr=="0NOTHING", ] # Price below likely to be error
+# Filter Outlier Prices
+retailer_panel = retailer_panel[(price>0.20&!is.na(price)) | brand_descr=="0NOTHING", ] 
 retailer_panel[brand_descr=="0NOTHING", ptype:="NOTHING"]
 prod_weights = purchases[, .(hms_revenue = sum(total_price_paid)), 
                          by = c("brand_descr_orig", "ptype", "keurig", "roast", "size1_amount",
@@ -35,6 +36,7 @@ setkeyv(retailer_panel, c("brand_descr_orig", "ptype", "keurig", "roast", "size1
                           "flavored", "kona", "colombian", "sumatra", "wb"))
 retailer_panel = prod_weights[retailer_panel]
 retailer_panel[brand_descr!="0NOTHING", price:=price/size1_amount] # Normalize all prices to per serving
+retailer_panel = retailer_panel[(price>0.02&price<2.00&!is.na(price)) | brand_descr=="0NOTHING", ] 
 retailer_panel = retailer_panel[, .(price = ifelse(brand_descr=="0NOTHING", 0, 
                                                    sum(price*hms_revenue)/sum(hms_revenue)), 
                                     prod_id = .GRP),
@@ -46,6 +48,7 @@ retailer_panel[, `:=`(nprod = length(unique(prod_id)), nbrand=length(unique(bran
 retailer_panel[, `:=`(nprod = length(unique(prod_id))), 
                by = c("dma_code", "retailer_code", "week_end", "ptype", "brand_descr_orig")]
 retailer_panel[, `:=`(prod_id = NULL)]
+retailer_panel = retailer_panel[(price>0.02&price<2.00&!is.na(price)) | brand_descr=="0NOTHING", ] 
 save(retailer_panel, file = paste(output_dir, "/Retailer_Brand_Price_Panel.RData", sep=""))
 
 # Now contrain panel to trips with valid lags and year threshold 
@@ -226,7 +229,7 @@ name_order = c("household_code", "trip_code_uc", "dma_code", "hh", "t", "brand_d
                "inventory", "kinventory", "total_price_paid",  "coupon_value", "brand_descr_orig", "kholding")
 hh_market_prod = hh_market_prod[, name_order, with = FALSE]
 hh_market_prod[brand_descr=="0NOTHING", `:=`(size=caf, total_price_paid=caf, price=1, purchased=as.integer(caf>0))]
-hh_market_prod[grepl("KEURIG", brand_descr), keurig:=0]
+hh_market_prod[grepl(" KEURIG", brand_descr), keurig:=0]
 setkey(hh_market_prod, hh, t, brand_descr, keurig)
 
 if (cond_purch){

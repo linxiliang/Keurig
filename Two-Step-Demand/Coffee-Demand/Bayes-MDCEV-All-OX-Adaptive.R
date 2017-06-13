@@ -38,30 +38,64 @@ set.seed(1234567)
 
 #---------------------------------------------------------------------------------------------------------# 
 # Initialize Parallel Execution Environment
-# primary <- 'bushgcn01'
-# machineAddresses <- list(
-#   list(host=primary, user='xlin0',
-#        ncore=20),
-#   list(host='bushgcn02',user='xlin0',
-#        ncore=20),
-#   list(host='bushgcn03',user='xlin0',
-#        ncore=20),
-#   list(host='bushgcn04',user='xlin0',
-#        ncore=20),
-#   list(host='bushgcn05',user='xlin0',
-#        ncore=20),
-#   list(host='bushgcn06',user='xlin0',
-#        ncore=20)
-#   )
+primary <- 'bushgcn01'
+machineAddresses <- list(
+  list(host=primary, user='xlin0',
+       ncore=20),
+  list(host='bushgcn02',user='xlin0',
+       ncore=20),
+  list(host='bushgcn03',user='xlin0',
+       ncore=20),
+  list(host='bushgcn04',user='xlin0',
+       ncore=20),
+  list(host='bushgcn05',user='xlin0',
+       ncore=20),
+  list(host='bushgcn06',user='xlin0',
+       ncore=20)
+  )
+primary <- 'bushgcn10'
+machineAddresses <- list(
+  list(host=primary, user='xlin0',
+       ncore=12),
+  list(host='bushgcn11',user='xlin0',
+       ncore=12),
+  list(host='bushgcn12',user='xlin0',
+       ncore=12),
+  list(host='bushgcn33',user='xlin0',
+       ncore=12),
+  list(host='bushgcn34',user='xlin0',
+       ncore=12),
+  list(host='bushgcn35',user='xlin0',
+       ncore=12),
+  list(host='bushgcn36',user='xlin0',
+       ncore=12),
+  list(host='bushgcn37',user='xlin0',
+       ncore=12),
+  list(host='bushgcn38',user='xlin0',
+       ncore=12),
+  list(host='bushgcn39',user='xlin0',
+       ncore=12)
+  )
+# 
+primary <- 'bushgcn27'
+machineAddresses <- list(
+  list(host=primary, user='xlin0',
+       ncore=32),
+  list(host='bushgcn26',user='xlin0',
+       ncore=32),
+  list(host='bushgcn29',user='xlin0',
+       ncore=32)
+)
+
 primary <- 'bushgcn30'
 machineAddresses <- list(
   list(host=primary, user='xlin0',
-       ncore=40),
+       ncore=28),
   list(host='bushgcn31',user='xlin0',
-       ncore=40),
+       ncore=28),
   list(host='bushgcn32',user='xlin0',
-       ncore=40)
-  )
+       ncore=28)
+)
 
 spec <- lapply(machineAddresses,
                function(machine) {
@@ -107,6 +141,7 @@ source(paste(code_dir, 'mdc-functions-OX.R', sep=""))
 # Load estimation data
 load(paste(input_dir,"MDC-Cond-Purchase-Flavors.RData",sep=""))
 hh_market_prod = hh_market_prod[brand_descr!="0NOTHING", ]
+hh_market_prod[grep(" KEURIG", brand_descr), keurig:=1]
 gc()
 
 # Names settings
@@ -159,14 +194,14 @@ hh_full = copy(hh_market_prod)
 # Obtain the list of households
 hh_n_list = hh_full[, unique(hh)]
 ncl = length(cl)
-nhsize = floor(length(hh_n_list)/ncl)
+nhsize = ceiling(length(hh_n_list)/ncl)
 
 # Put each chunk of data to the data.table
 for (i in 1:ncl){
   if (i==ncl){
     hh_list = sort(hh_n_list)
   } else{
-    hh_list = sort(sample(hh_n_list, nhsize))
+    hh_list = hh_n_list[1:nhsize]
   }
   hh_n_list = setdiff(hh_n_list, hh_list)
   hh_market_prod = hh_full[hh%in%hh_list, ]
@@ -183,7 +218,7 @@ nx = ncol(XMat)
 np = nk+nx+1# if sigma is estimated, put + 1
 nh = length(hh_full[, unique(hh)])
 nt = length(hh_full[, unique(t)])
-clusterExport(cl, c('xnames', 'znames', 'detfun', 'll', 'ihessfun', 'input_dir', "nk", "nx", "np", "nh"))
+clusterExport(cl, c('xnames', 'znames', 'detfun', 'll', 'i_par', 'ihessfun', 'input_dir', "nk", "nx", "np", "nh"))
 invisible(clusterEvalQ(cl, setwd("~/Keurig")))
 invisible(clusterEvalQ(cl, load(paste(input_dir, "/HH-Aux-Market.RData", sep=""))))
 
@@ -197,17 +232,20 @@ save(opt0, hess, file = paste(input_dir, "/Homo-Hessian-OX.RData", sep=""))
 
 # Evaluate Hessian at Fractional likelihood
 invisible(clusterEvalQ(cl, load(paste(input_dir, "/Homo-Hessian-OX.RData", sep=""))))
+par_list = clusterEvalQ(cl, lapply(hh_list, i_par))
+par_list = unlist(par_list, recursive=F)
+clusterExport('par_list')
 hess_list = clusterEvalQ(cl, lapply(hh_list, ihessfun))
 hess_list = unlist(hess_list, recursive=F)
-save(opt0, hess, hess_list, file = paste(input_dir, "/Hessian-OX.RData", sep=""))
+save(opt0, hess, par_list, hess_list, file = paste(input_dir, "/Hessian-OX.RData", sep=""))
 # save(opt0, hess, hess_list, file = paste(input_dir, "/Posterior-Variance.RData", sep=""))
 gc()
 #---------------------------------------------------------------------------------------------------------#
 # Bayesian Estimation 
 # MCMC Settings
 burnin = 0
-thin   = 5
-draws  = 4000
+thin   = 3
+draws  = 9000
 tunein = 0
 totdraws = draws*thin + burnin
 
@@ -221,17 +259,32 @@ Dbar = matrix(rep(0, nz*np), nrow=nz)
 s2 = 2.93^2/np;
 
 # Distribute the functions and relevant data to the workers.
-invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hessian-OX2.RData", sep=""))))
+invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hessian-OX.RData", sep=""))))
+invisible(clusterEvalQ(cl, load(paste(input_dir, "/Homo-OX-Opt0.RData", sep=""))))
+invisible(clusterEvalQ(cl, load(paste(input_dir, "/par_temp.RData", sep=""))))
 # invisible(clusterEvalQ(cl, load(paste(input_dir, "/Posterior-Variance.RData", sep=""))))
-clusterExport(cl,c('i_ll', 'rwmhd', 'prefrun', 's2', 'tunein'))
+clusterExport(cl,c('i_ll', 'rwmhd', 'prefrun', 's2', 'tunein', 'initrun', 'bcorrect'))
 invisible(clusterEvalQ(cl, (Z_i=cbind(rep(1, nrow(hh_demo_chunk)), as.matrix(hh_demo_chunk[, znames, with=F])))))
-invisible(clusterEvalQ(cl, (beta_dt=data.table(matrix(opt0$par+rnorm(length(hh_list)*np, mean=0, sd=10), 
-                                                      ncol=length(hh_list))))))
-
+# invisible(clusterEvalQ(cl, (beta_dt=data.table(matrix(c(rnorm(length(hh_list)*(np-3), mean=0, sd=2),
+#                                                         rnorm(length(hh_list), mean=2, sd=0.5),
+#                                                         rnorm(length(hh_list), mean=2, sd=0.5),
+#                                                         rnorm(length(hh_list), mean=-2, sd=0.02)),
+#                                                       ncol=length(hh_list), byrow=T)))))
+invisible(clusterEvalQ(cl, (beta_dt=data.table(opt0$par + matrix(c(rnorm(length(hh_list)*(np-3), mean=0, sd=1),
+                                                        rnorm(length(hh_list), mean=0, sd=0.1),
+                                                        rnorm(length(hh_list), mean=0, sd=0.1),
+                                                        rnorm(length(hh_list), mean=0, sd=0.1)),
+                                                      ncol=length(hh_list), byrow=T)))))
 invisible(clusterEvalQ(cl, setnames(beta_dt, names(beta_dt), as.character(hh_list))))
-beta0 = invisible(clusterEvalQ(cl, beta_dt))
+invisible(clusterEvalQ(cl, (hh_list_samp = sort(sample(hh_list, ceiling(length(hh_list)*0.10))))))
+
+# Tune the betas for each household
+beta0 = clusterEvalQ(cl, initrun())
+#beta0 = clusterEvalQ(cl, bcorrect())
+#beta0 = clusterEvalQ(cl, beta_dt)
 bhnames = as.integer(unlist(lapply(beta0, names)))
 beta0 = matrix(t(unlist(beta0)), ncol=np, byrow=T)
+beta0 = beta0[order(bhnames), ]
 
 # Intialize the tuning dataset
 invisible(clusterEvalQ(cl, (ac_dt=data.table(hh=hh_list))))
@@ -270,8 +323,9 @@ for (d in 1:totdraws){
     indx = ceiling((d - burnin)/thin)
     bhatd[indx,] = bhat; 
     deltad[indx,] = delta;
-    sigd[, ,indx] = sig; 
-    if (d > tunein) bindv[indx - ceiling((tunein - burnin)/thin), ,] = beta0;
+    sigd[, ,indx] = sig;
+    bnorder = order(bhnames)
+    if (d > tunein) bindv[indx - ceiling((tunein - burnin)/thin), ,] = beta0[bnorder, ];
   }
   
   # RW MH to draw betas for each household
@@ -280,6 +334,10 @@ for (d in 1:totdraws){
   
   # Parallel version
   clusterExport(cl, c('sig', 'Delta', 'd'))
+  if (d %% 500==0 & d <= (tunein+1)){
+    for (i in 1:30) beta_list = clusterEvalQ(cl, prefrun())
+    invisible(clusterEvalQ(cl, (hh_list_samp = sort(sample(hh_list, ceiling(length(hh_list)*0.10))))))
+  }
   beta_list = clusterEvalQ(cl, prefrun())
   bhnames = as.integer(unlist(lapply(beta_list, names)))
   beta0 = matrix(unlist(beta_list), ncol=np, byrow=T)
@@ -291,7 +349,9 @@ for (d in 1:totdraws){
 # Save output to a dataset
 inx = seq(1, 3333, 3)
 inx = seq(1, 10000, 4)
-
+bac_dt = invisible(clusterEvalQ(cl, ac_dt))
+bac_dt = rbindlist(bac_dt)
+setkey(bac_dt, hh)
 # bindv = bindv[inx,,]
 # save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, 
 #      file = paste(output_dir, "MDCEV-MCMC-All-30000.RData", sep = ""))
@@ -299,6 +359,14 @@ inx = seq(1, 10000, 4)
 
 #save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, 
 #      file = paste(output_dir, "MDCEV-MCMC-O1.RData", sep = ""))
-save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, 
-      file = paste(output_dir, "MDCEV-MCMC-OX-NoGS.RData", sep = ""))
+save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, bac_dt,
+      file = paste(output_dir, "MDCEV-MCMC-OX.RData", sep = ""))
+save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, bac_dt,
+     file = paste("Keurig/Data/Bayes-MCMC/MDCEV-MCMC-OX.RData", sep = ""))
+save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, bac_dt, beta0, 
+     file = paste(output_dir, "MDCEV-MCMC-OX-All.RData", sep = ""))
 
+save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, bac_dt, beta0, 
+     file = paste(output_dir, "MDCEV-MCMC-OX2.RData", sep = ""))
+save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, bac_dt, beta0, 
+     file = paste(output_dir, "MDCEV-MCMC-OX-All2.RData", sep = ""))

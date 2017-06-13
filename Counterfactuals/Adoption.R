@@ -35,7 +35,7 @@ set.seed(12345)
 
 # Source function
 source('Scripts/Counterfactuals/machine-functions.R')
-
+Rcpp::sourceCpp('Scripts/Counterfactuals/CoffeeValue.cpp')
 #---------------------------------------------------------------------------------------------------#
 # Initialize Parallel Execution Environment
 cores = detectCores(logical=TRUE)
@@ -55,26 +55,45 @@ invisible(clusterEvalQ(cl, setNumericRounding(0)))
 invisible(clusterEvalQ(cl, library(nloptr)))
 invisible(clusterEvalQ(cl, setwd('~/Keurig')))
 invisible(clusterEvalQ(cl, source('Scripts/Counterfactuals/machine-functions.R')))
+invisible(clusterEvalQ(cl, Rcpp::sourceCpp('Scripts/Counterfactuals/CoffeeValue.cpp')))
 
 #---------------------------------------------------------------------------------------------------#
 # Load Datasets
 load("Data/Machine-Adoption/MU-Diff-Asist.RData")
-
+setnames(retailer_panel, "nbrand", "nbrand_all")
+retailer_panel[thirdp==1, `:=`(nbrand_own = length(unique(brand_descr)) + 0.0), 
+               by = c("dma_code", "quarter", "retailer_code", "week_end")]
+retailer_panel[licensed==1, `:=`(nbrand_licensed = length(unique(brand_descr)) + 0.0), 
+               by = c("dma_code", "quarter", "retailer_code", "week_end")]
+retailer_panel[, `:=`(nbrand_own = mean(nbrand_own, na.rm=T), nbrand_licensed = mean(nbrand_licensed, na.rm=T)),
+               by = c("dma_code", "quarter", "retailer_code", "week_end")]
+retailer_panel[is.na(nbrand_own) | is.infinite(nbrand_own), nbrand_own:=0]
+retailer_panel[is.na(nbrand_licensed) | is.infinite(nbrand_licensed), nbrand_licensed:=0]
+retailer_panel[keurig==1 | grepl(" KEURIG", brand_descr), 
+               `:=`(nbrand_own = log(round(exp(nbrand_all))-nbrand_own-nbrand_licensed),
+                    nbrand_licensed = log(round(exp(nbrand_all))-nbrand_own))]
+retailer_panel[(keurig==0 & !grepl(" KEURIG", brand_descr)), `:=`(nbrand_own = nbrand_all, nbrand_licensed = nbrand_all)]
+retailer_panel[is.na(nbrand_own) | is.infinite(nbrand_own), nbrand_own:=0]
+retailer_panel[is.na(nbrand_licensed) | is.infinite(nbrand_licensed), nbrand_licensed:=0]
+save(hh_trip_prob, retailer_panel, hh_panel, pref, bhatd, hh_codes, 
+     file = "Data/Machine-Adoption/MU-Diff-Type-Asist.RData")
 #---------------------------------------------------------------------------------------------------#
 # Brand Descriptions 
-brands = c("CARIBOU KEURIG", "CHOCK FULL O NUTS", "CTL BR", "DONUT HOUSE KEURIG", "DUNKIN' DONUTS",
+brands = c("0OTHER", "CARIBOU KEURIG", "CHOCK FULL O NUTS", "CTL BR", "DONUT HOUSE KEURIG", "DUNKIN' DONUTS",
            "EIGHT O'CLOCK", "FOLGERS", "FOLGERS KEURIG", "GREEN MOUNTAIN KEURIG", "MAXWELL HOUSE", 
            "NEWMAN'S OWN ORGANICS KEURIG", "STARBUCKS", "STARBUCKS KEURIG", "TULLY'S KEURIG")
 xnames = c("0OTHER", brands, "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
-           "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag")
+           "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", "nbrands")
 
 # Compute the adoption value consumer by consumer
-xvars = c(paste0("a", 2:15), "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
-          "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag")
-xnames = c("0OTHER", brands, "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
-           "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag")
+xvars_all = c(paste0("a", 2:16), "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
+          "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", "nbrand_all")
+xvars_own = c(paste0("a", 2:16), "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
+          "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", "nbrand_own")
+xvars_licensed = c(paste0("a", 2:16), "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
+          "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", "nbrand_licensed")
 
-hhValFun<-function(i){
+hhValFun<-function(i, n=300){
   hh_prob_temp = hh_trip_prob[.(i), ]
   setkey(hh_prob_temp, dma_code, quarter, retailer_code)
   hh_retailers_temp = retailer_panel[hh_prob_temp, nomatch=0L]
@@ -82,117 +101,54 @@ hhValFun<-function(i){
   setkey(hh_retailers_temp, week_end)
   hh_lags = hh_panel[.(i), ]
   setkey(hh_lags, week_end)
-  hh_retailers_temp = hh_retailers_temp[hh_lags[,.(week_end, brand_type_lag, keurig_lag, pprob)], nomatch=0L]
+  hh_retailers_temp = hh_retailers_temp[hh_lags[,.(week_end, brand_type_lag, pprob)], nomatch=0L]
   if (nrow(hh_retailers_temp)==0) return(data.table(NULL))
-  hh_retailers_temp[, `:=`(brand_lag=as.integer(brand_descr%in%brand_type_lag & keurig==keurig_lag),
-                           brand_lag_keurig=as.integer(brand_descr%in%brand_type_lag & keurig==keurig_lag)*keurig)]
+  hh_retailers_temp[, `:=`(brand_lag = as.integer(grepl(brand_type, brand_type_lag))), by = "nobs"]
+  hh_retailers_temp[, `:=`(brand_lag_keurig = brand_lag*grepl("KEURIG", brand_lag))]
   hh_retailers_temp[is.na(brand_lag), brand_lag:=0]
   hh_retailers_temp[is.na(brand_lag_keurig), brand_lag_keurig:=0]
-  xmat = as.matrix(hh_retailers_temp[, xvars, with=FALSE])
+  xmat_all = as.matrix(hh_retailers_temp[, xvars_all, with=FALSE])
+  xmat_own = as.matrix(hh_retailers_temp[, xvars_own, with=FALSE])
+  xmat_licensed = as.matrix(hh_retailers_temp[, xvars_licensed, with=FALSE])
   kmat = as.matrix(hh_retailers_temp[, cbind(1-keurig, keurig)])
   
   # Compute the quality of product
-  hh_retailers_temp[, zb := xmat %*% pref[as.character(i),1:26]]
+  hh_retailers_temp[, zb_all := xmat_all %*% pref[as.character(i),1:28]]
+  hh_retailers_temp[, zb_own := xmat_own %*% pref[as.character(i),1:28]]
+  hh_retailers_temp[, zb_licensed := xmat_licensed %*% pref[as.character(i),1:28]]
   # Compute the alpha of the product
-  hh_retailers_temp[, alpha := kmat %*% pref[as.character(i),27:28]]
-  nobs = nrow(hh_retailers_temp)
+  hh_retailers_temp[, alpha := kmat %*% pref[as.character(i), 29:30]]
+  # Compute the rho
+  hh_retailers_temp[, rho := pref[as.character(i), 31]]
   
   # Number of retailer and week pair 
-  hh_retailers_temp[, idx:=.GRP, by = .(dma_code, retailer_code, week_end)]
-  setkey(hh_retailers_temp, idx)
-  nw = hh_retailers_temp[, max(idx)]
-  uall1_cum = rep(0, nw)
-  uall2_cum = rep(0, nw)
-  uall3_cum = rep(0, nw)
-  ugrd_cum = rep(0, nw)
-  
-  # HH week and retailer information 
-  hh_agg = hh_retailers_temp[, .(household_code=household_code[1],retailer_code=retailer_code[1],
-                                 week_end=week_end[1],tprob=tprob[1],pprob=pprob[1]), by = c("idx")]
-  setkey(hh_agg, idx)
-  setkey(hh_agg, NULL)
-  
-  # Monte Carlo Integration
-  # Vectorization is the key
-  starttime <- proc.time()
-  for (j in 1:1000){
-    if ("fil0_1"%in%names(hh_retailers_temp)){
-      hh_retailers_temp[, `:=`(fil0_1 = NULL, fil0_2=NULL, fil0_3=NULL, fil1=NULL, eps=NULL)]
-    }
-    # Simulate eps
-    hh_retailers_temp[, eps:=-log(-log(runif(nobs)))]
-    # Simulate E
-    E = exp(rnorm(1, mean=pref[as.character(i), 29], sd= pref[as.character(i), 30]))
-    
-    # Compute the utility in the scenario
-    hh_retailers_temp[, `:=`(UE = 1/price * exp(zb + eps)*(E/price+1)^(alpha-1),
-                             U0 = 1/price * exp(zb + eps))]
-    
-    hh_retailers_temp[licensed==0&thirdp==0, `:=`(fil0_1 = as.integer(U0>=max(UE))), by = .(idx)]
-    n1 =  nrow(hh_retailers_temp[licensed==0&thirdp==0,])
-    if (n1==0){
-      uall1_cum = 0 #no ground, get no value
-    } else{
-      dt_v0_1 = hh_retailers_temp[fil0_1>=0.9, .(ubar = log(eu2(min(UE-0.00001), max(U0+0.00001), 
-                                                                alpha, zb, price, eps, E))), by = .(idx)]
-      uall1_cum[dt_v0_1$idx] = uall1_cum[dt_v0_1$idx] + dt_v0_1$ubar
-    }
-    hh_retailers_temp[licensed==0, `:=`(fil0_2 = as.integer(U0>max(UE))), by = .(idx)]
-    n2 =  nrow(hh_retailers_temp[licensed==0,])
-    if (n2==0){
-      uall2_cum = 0 #no ground, get no value
-    } else{
-      dt_v0_2 = hh_retailers_temp[fil0_2>=0.9, .(ubar = log(eu2(min(UE-0.00001), max(U0+0.00001), 
-                                                                alpha, zb, price, eps, E))), by = .(idx)]
-      uall2_cum[dt_v0_2$idx] = uall2_cum[dt_v0_2$idx] + dt_v0_2$ubar
-    }
-    hh_retailers_temp[thirdp==0, `:=`(fil0_3 = as.integer(U0>max(UE))), by = .(idx)]
-    n3 =  nrow(hh_retailers_temp[thirdp==0,])
-    if (n3==0){
-      uall3_cum = 0 #no ground, get no value
-    } else{
-      dt_v0_3= hh_retailers_temp[fil0_3>=0.9, .(ubar = log(eu2(min(UE-0.00001), max(U0+0.00001), 
-                                                               alpha, zb, price, eps, E))), by = .(idx)]
-      uall3_cum[dt_v0_3$idx] = uall3_cum[dt_v0_3$idx] + dt_v0_3$ubar
-    }
-    
-    hh_retailers_temp[, `:=`(fil1 = as.integer(U0>max(UE))), by = .(idx, keurig)]
-    if (nrow(hh_retailers_temp[fil1>=0.9&keurig<=0.1,])==0){
-      ugrd_cum = 0 #no ground, get no value
-    } else{
-      dt_v1 = hh_retailers_temp[fil1>=0.9&keurig<=0.1,
-                                .(ubar=log(eu2(min(UE-0.00001), max(U0+0.00001), 
-                                           alpha, zb, price, eps, E))), by = .(idx)]
-      ugrd_cum[dt_v1$idx] = ugrd_cum[dt_v1$idx] + dt_v1$ubar
-      ugrd_cum[-dt_v1$idx] = ugrd_cum[-dt_v1$idx] + 0 #no ground, get no value
-    }
-    #cat("Processed", j, "after", proc.time()-starttime, "seconds.\n\n")
-  }
-  hh_agg[, `:=`(uall1=uall1_cum/1000, uall2=uall2_cum/1000, uall3=uall3_cum/1000, ugrd=ugrd_cum/1000)]
-  hh_agg[, `:=`(mu_diff1=uall1-ugrd, mu_diff2=uall2-ugrd, mu_diff3=uall3-ugrd)]
-  hh_agg = hh_agg[, .(mu_diff1 = sum(mu_diff1 * tprob)/sum(tprob),
-                      mu_diff2 = sum(mu_diff2 * tprob)/sum(tprob),
-                      mu_diff3 = sum(mu_diff3 * tprob)/sum(tprob),
-                      uall1 = sum(uall1 * tprob)/sum(tprob),
-                      uall2 = sum(uall2 * tprob)/sum(tprob),
-                      uall3 = sum(uall3 * tprob)/sum(tprob),
-                      ugrd = sum(ugrd * tprob)/sum(tprob)), 
-                      by = c("household_code", "week_end", "pprob")]
-  hh_agg = hh_agg[, .(mu_diff1 = mu_diff1 * pprob, uall1 = uall1*pprob, 
-                      mu_diff2 = mu_diff2 * pprob, uall2 = uall2*pprob, 
-                      mu_diff3 = mu_diff3 * pprob, uall3 = uall3*pprob, 
-                      ugrd=ugrd*pprob), 
-                      by = c("household_code", "week_end")]
+  setkey(hh_retailers_temp, household_code, retailer_code, week_end)
+  hh_agg = hh_retailers_temp[, .(av = list(mc_vfun(zb_all,zb_own,zb_licensed,alpha, rho, price, keurig, 
+                                                   owned, licensed, thirdp, n)), 
+                                 tprob=tprob[1], pprob=pprob[1]), 
+                             by = .(household_code, dma_code, retailer_code, week_end)]
+  hh_agg[, `:=`(av1=sapply(av, "[[", 1), av2=sapply(av, "[[", 2), 
+                av3=sapply(av, "[[", 3), gv=sapply(av, "[[", 4))]
+  hh_agg = hh_agg[, .(av1=sum(av1*tprob)/sum(tprob), 
+                      av2=sum(av2*tprob)/sum(tprob), 
+                      av3=sum(av3*tprob)/sum(tprob), 
+                      gv=sum(gv*tprob)/sum(tprob), pprob=pprob[1]), 
+                  by = c("household_code", "week_end")]
+  hh_agg[, `:=`(av1 = av1*pprob, av2 = av2*pprob, av3 = av3*pprob, gv = gv*pprob)]
+  hh_agg[, `:=`(mu_diff1 = av1-gv, mu_diff2 = av2-gv, mu_diff3 = av3-gv)]
   return(hh_agg)
 }
-invisible(clusterEvalQ(cl, load('Data/Machine-Adoption/MU-Diff-Asist.RData')))
-clusterExport(cl, c('pref', 'xvars', 'hhValFun'))
-cval_list = parLapply(cl, hh_codes, hhValFun)
+invisible(clusterEvalQ(cl, load('Data/Machine-Adoption/MU-Diff-Type-Asist.RData')))
+clusterExport(cl, c('pref', 'xvars_all', 'xvars_own', 'xvars_licensed', 'hhValFun'))
+cval_list = parLapply(cl, hh_codes, hhValFun, n=100)
 cval_list = rbindlist(cval_list)
 save(cval_list, file = paste(output_dir, "/HH-Util-Diff-Type.RData", sep=""))
 
 load(paste(output_dir, "/HH-Util-Diff-Type.RData", sep=""))
 load(paste(output_dir, "/HW-Full-Panel.RData", sep=""))
+# Remove outliers
+cval_list = cval_list[mu_diff1<=quantile(mu_diff1, 0.99) & mu_diff2<=quantile(mu_diff2, 0.99) & 
+                   mu_diff3<=quantile(mu_diff3, 0.99), ]
 # Merge consumption value back to the value function
 setkey(cval_list, household_code, week_end)
 setkey(hw_panel, household_code, week_end)
@@ -251,6 +207,7 @@ for (i in 1:3){
                                                 gamma2 = gamma2fun(mu_diff~mu_diff_lag),
                                                 sig = sigfun(mu_diff~mu_diff_lag)), 
                                     by = "household_code"]
+  hw_markov_check[, print(c(median(gamma1, na.rm=T), median(gamma2, na.rm=T), median(sig, na.rm=T)))]
   regout = hw_market_panel[, lm(mu_diff~mu_diff_lag)]
   print(summary(regout))
   setnames(hw_market_panel, "mu_diff", paste0("mu_diff", i))

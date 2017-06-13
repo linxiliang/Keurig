@@ -25,10 +25,11 @@ graph_dir = "Tabfigs/MCMC-Summaries"
 code_dir = "Scripts/MCMC-Summaries"
 #----------------------------------------------------------------------------------------------------#
 # Load Estimation Results
-load(paste(input_dir, "/MDCEV-MCMC-All-30000.RData", sep=""))
+load(paste(input_dir, "/MDCEV-MCMC-OX-All2.RData", sep=""))
+bindv[,,29:31] = exp(bindv[,,29:31])/(1+exp(bindv[,,29:31]))
 
 # Burnin
-burnin = 1000
+burnin = 401
 d_ind = c((burnin+1):dim(bindv)[1])
 
 brands=c("0OTHER", "CARIBOU KEURIG", "CHOCK FULL O NUTS", "CTL BR", "DONUT HOUSE KEURIG", 
@@ -36,9 +37,18 @@ brands=c("0OTHER", "CARIBOU KEURIG", "CHOCK FULL O NUTS", "CTL BR", "DONUT HOUSE
          "MAXWELL HOUSE", "NEWMAN'S OWN ORGANICS KEURIG", "STARBUCKS", "STARBUCKS KEURIG", "TULLY'S KEURIG")
 features=c("brand", "keurig", "flavored", "lightR", "medDR", "darkR", 
            "assorted", "kona", "colombian", "sumatra", "wb")
-xnames=c(brands, features[2:length(features)], "brand_lag_keurig", 
-         "brand_lag", 'ground_alpha', 'keurig_alpha')
-k_ind=which(xnames=="keurig")-1
+xnames = c(brands, features[2:length(features)], "brand_lag_keurig", "brand_lag", 'nbrand', 
+           'ground_alpha', 'keurig_alpha', 'rho')
+k_ind=which(xnames=="keurig")
+ind_ga= which(xnames=="ground_alpha")
+ind_ka = which(xnames=="keurig_alpha")
+ind_rho = which(xnames=="rho")
+for (b in brands){
+  ind_b = which(xnames==b)
+  if (grepl("KEURIG", b)){
+    bindv[,,ind_b] = bindv[,,ind_b] + bindv[,,k_ind]
+  } 
+}
 
 nb = length(brands)
 nh = dim(bindv)[2]
@@ -48,7 +58,7 @@ r2_tab = matrix(rep(0, ndraws*4), ncol=4)
 b_ind_list = NULL
 for (br in brands){
   if (grepl("KEURIG", br)){
-    b_ind = which(brands==br)-1
+    b_ind = which(brands==br)
     b_ind_list = c(b_ind_list, b_ind)
   }
 }
@@ -64,9 +74,18 @@ for (d in 1:ndraws){
   gc()
 
   # Modify bindv so that Keurig brands have the values built in
-  for (b_ind in b_ind_list) indv_dt[,b_ind] = indv_dt[,b_ind] + indv_dt[,k_ind]
-  
-  indv_dt = indv_dt[, 1:≈]
+  # With levels
+  # for (b_ind in 1:nb){
+  #   if (b_ind %in% b_ind_list){
+  #     indv_dt[,b_ind] = 0.1294638*(exp(indv_dt[,b_ind]) * (2^indv_dt[,ind_ka]-1))^indv_dt[,ind_rho]
+  #   } else{
+  #     indv_dt[,b_ind] = 0.1294638*(exp(indv_dt[,b_ind]) * (2^indv_dt[,ind_ga]-1))^indv_dt[,ind_rho]
+  #   }
+  # }
+  # Relative
+  for (b_ind in 2:nb) indv_dt[,b_ind] = indv_dt[,b_ind] - indv_dt[,1]
+  indv_dt[,1] = 0
+  indv_dt = indv_dt[, 1:nb]
   indv_dt = data.table(value = as.vector(t(indv_dt)))
   indv_dt[, hh := sort(rep(1:nh, nb))]
   indv_dt[, brand := rep(1:nb, nh)]
@@ -84,12 +103,12 @@ for (d in 1:ndraws){
   r2_tab[d, 4] = indv_dt[, 1 - sum((resid_all_mean)^2)/sum((value-mean(value))^2)]
   
   # HH level variance analysis
-  hh_v1 = indv_dt[keurig==0, sum((value - mean(value))^2), by = "hh"][,V1]
-  hh_v2 = indv_dt[keurig==1&brand!=nb, sum((value - mean(value))^2), by = "hh"][,V1]
-  hh_v3 = indv_dt[brand!=nb, sum((value - mean(value))^2), by = "hh"][,V1]
-  indv_dt[brand!=nb, hh_mean_v := mean(value), by = "hh"]
+  hh_v1 = indv_dt[keurig==0, var(value), by = "hh"][,V1]
+  hh_v2 = indv_dt[keurig==1, var(value), by = "hh"][,V1]
+  hh_v3 = indv_dt[, var(value), by = "hh"][,V1]
+  indv_dt[, hh_mean_v := mean(value), by = "hh"]
   hh_v4 = indv_dt[keurig==0, sum((mean(value) - hh_mean_v)^2), by = "hh"][,V1]
-  hh_v5 = indv_dt[keurig==1&brand!=nb, sum((mean(value) - hh_mean_v)^2), by = "hh"][,V1]
+  hh_v5 = indv_dt[keurig==1, sum((mean(value) - hh_mean_v)^2), by = "hh"][,V1]
   
   hh_var_tab[.(d), value:=c(hh_v1, hh_v2, hh_v3, hh_v4, hh_v5)]
   
@@ -110,27 +129,16 @@ g1 = ggplot(r2_tab, aes(x=Keurig))+theme_bw()+labs(list(title="K-Cup", x="R-Squa
 g2 = ggplot(r2_tab, aes(x=Brand))+theme_bw()+labs(list(title="Brand", x="R-Squared", y="Density"))+
   geom_histogram(bins = 20, aes(y = ..density..), fill = "skyblue", colour="black")+
   geom_vline(xintercept = quantile(r2_tab[, Brand], c(0.025, 0.50, 0.975)))
-g3 = ggplot(r2_tab, aes(x=Household))+theme_bw()+labs(list(title="Household", x="R-Squared", y="Density"))+
-  geom_histogram(bins = 20, aes(y = ..density..), fill = "skyblue", colour="black")+
-  geom_vline(xintercept = quantile(r2_tab[, Household], c(0.025, 0.50, 0.975)))
-g4 = ggplot(r2_tab, aes(x=BrandHousehold))+theme_bw()+
-  labs(list(title="Brand+Household", x="R-Squared", y="Density"))+
-  geom_histogram(bins = 20, aes(y = ..density..), fill = "skyblue", colour="black")+
-  geom_vline(xintercept = quantile(r2_tab[, BrandHousehold], c(0.025, 0.50, 0.975)))
-multplot = marrangeGrob(list(g1, g2, g3, g4), ncol=2, nrow=2, top="")
-ggsave(paste(graph_dir, "/figs/R2-Draws.pdf", sep=""), multplot, width=7, height=7)
+multplot = marrangeGrob(list(g1, g2), ncol=2, nrow=1, top="")
+ggsave(paste(graph_dir, "/figs/R2-Draws.pdf", sep=""), multplot, width=7, height=3.5)
 
 
 # Make the corresponding graphs
-hh_var_tab[vtype==1, value:=value/7]
-hh_var_tab[vtype==2, value:=value/7]
-hh_var_tab[vtype==3, value:=value/14]
 hh_var_tab[vtype==4, value:=value/7]
-hh_var_tab[vtype==5, value:=value/7]
+hh_var_tab[vtype==5, value:=value/6]
 setkey(hh_var_tab, iter, hh, vtype)
 hh_var_tab = hh_var_tab[vtype %in% c(1, 2), ]
 hh_var_tab = hh_var_tab[, .(value=mean(value)), by = c("hh", "vtype")]
-
 g1 = ggplot(hh_var_tab[vtype==1, ], aes(x=value))+theme_bw()+labs(list(title="Ground", x="Variance", y="Density"))+
   geom_histogram(bins = 40, aes(y = ..density..), fill = "skyblue", colour="black")+ xlim(0,15) +
   geom_vline(xintercept = quantile(hh_var_tab[vtype==1, value], c(0.025, 0.50, 0.975)))

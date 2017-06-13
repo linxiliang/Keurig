@@ -6,10 +6,10 @@
 test_run = false;
 remote = true;
 if remote
-  addprocs(48, restrict=false)
-  # machines = [("bushgcn02", 20), ("bushgcn03", 20), ("bushgcn04", 20), ("bushgcn05", 20), ("bushgcn06", 20)]
-  machines = [("bushgcn13", 48)]
-  # machines = [("bushgcn11", 48), ("bushgcn12", 48)]
+  addprocs(10, restrict=false)
+  machines = [("bushgcn02", 10), ("bushgcn03", 10), ("bushgcn04", 10), ("bushgcn05", 10), ("bushgcn06", 10)]
+  # machines = [("bushgcn33", 28)]
+  # machines = [("bushgcn11", 12), ("bushgcn12", 12)]
   addprocs(machines; tunnel=true)
 else
   addprocs(4; restrict=false)
@@ -28,7 +28,7 @@ broad_mpi(:(np = $np));
 @everywhere cd("$(homedir())/Keurig");
 
 # Computation Settings
-@everywhere controls = false; # Add controls such as seasonality
+@everywhere controls = true; # Add controls such as seasonality
 @everywhere cons_av = false; # Constant adoption value
 
 # Load Packages
@@ -38,15 +38,15 @@ broad_mpi(:(using Distributions, Optim, FastGaussQuadrature, Calculus))
 # Parameter settings
 @everywhere β  = 0.995;
 # δ' = α0 + α1⋅δ + ϵ, ϵ~N(0,σ0^2)
-@everywhere α0 = 0.006460989;
-@everywhere α1 = 0.944186643;
-@everywhere σ0 = 0.05756;
+@everywhere α0 = 0.08531636;
+@everywhere α1 = 0.8607264;
+@everywhere σ0 = 0.2405738;
 # Reference Price: p_ref' = ω⋅price + (1-ω)⋅p_ref
-@everywhere ω = 0.3243178
+@everywhere ω = 0.2806031
 # Price: price' = ρ0 + ρ1⋅price + ɛ, ɛ~N(0,σ1^2)
-@everywhere ρ0 = 6.3093504
-@everywhere ρ1 = 0.9541681
-@everywhere σ1 = 7.230754
+@everywhere ρ0 = 14.87545
+@everywhere ρ1 = 0.8975656
+@everywhere σ1 = 4.928914
 
 # Load all function
 @everywhere include("$(homedir())/Keurig/Scripts/Two-Step-Demand/Machine-Adoption/functions.jl")
@@ -135,9 +135,9 @@ else
 end
 
 # Propose a starting value
-@everywhere theta0 = [-0.1, -0.3, 0.1]
+@everywhere theta0 = [-17.5, -2.0, 3.6]
 @everywhere kappa0 = zeros(Float64, n_z)
-sigs = diagm([0.01, 0.0001, 0.0001])
+sigs = diagm([0.1, 0.001, 0.001])
 walkdistr = MvNormal(zeros(n_x), sigs);
 ksigs = diagm([0.001, 0.0041, 0.0042, 0.0004, 0.001, 0.001, 0.0001])
 kwalkdis = MvNormal(zeros(n_z), ksigs);
@@ -146,10 +146,10 @@ pd = Uniform(minimum(XMat[:,1]), maximum(XMat[:,1]))
 pbard = Uniform(minimum(XMat[:,2]), maximum(XMat[:,2]))
 mud = Uniform(minimum(XMat[:,3]), maximum(XMat[:,3]))
 
-@everywhere sH = diagm([σ1^2, 5.^2, σ0^2]);
-@eval @everywhere H = 4 * $sigs
-@everywhere N_0 = 1000
-thtild = theta0 .+ 10*rand(walkdistr, N_0);
+@everywhere sH = diagm([9*σ1^2, 10.^2, 9*σ0^2]);
+@eval @everywhere H = 9 * $sigs
+@everywhere N_0 = 1500
+thtild = theta0 .+ 5*rand(walkdistr, N_0);
 xtild = zeros(Float64, n_x, N_0);
 stild = zeros(Float64, n_x, N_0);
 wtild = ones(Float64, N_0);
@@ -183,11 +183,11 @@ while (err > tol)
     wnext = ((spdfm.*tpdfm) * wtild)./(sum((spdfm.*tpdfm), 2)[:,1])
 
     # Obtain the Value for adopting
-    EW1 = thtild[1,:] + thtild[2, :] .* xtild[1, :] + thtild[3,:].*EW1x
+    EW1 = thtild[1,:] + thtild[2, :] .* xtild[1, :] + EW1x
 
     # Compute the Bellman
     EWmax = maximum(vcat(EW1x, β*wnext))
-    wgrid = log(exp(β*wnext-EWmax).+exp(EW1-EWmax))+EWmax
+    wgrid = exp(thtild[3,:]).*log(exp(β*wnext./exp(thtild[3,:])).+exp(EW1./exp(thtild[3,:])))
     err = sum(abs(wgrid-wtild))
     wtild[:] = wgrid
     println("Error is $(err), and interation is $(nx)")
@@ -224,7 +224,7 @@ end
 # Compute the relevante vectors concerning theta0
 @sync broad_mpi(:(wts_old  = spdf * tpdf));
 @sync broad_mpi(:(ww_old = spdf * (tpdf .* wtild)));
-@sync broad_mpi(:(w1_old = theta0[1] + theta0[2] * XMat[:,1] + theta0[3]*W1vec + ZMat*kappa0));
+@sync broad_mpi(:(w1_old = (theta0[1] + theta0[2] * XMat[:,1] + W1vec)/exp(theta0[2]) + ZMat*kappa0));
 
 # Initialize storage in other processes
 @sync broad_mpi(:(wts = Array(Float64, nobs)))
@@ -333,4 +333,4 @@ for d=1:totdraws
     println("Finished drawing $(d) out of $(totdraws)")
 end
 
-writedlm("Data/Bayes-MCMC/Adoption-Coef-MU.csv", hcat(thatd, lld))
+writedlm("Data/Bayes-MCMC/Adoption-Coef-MU-FirstIteration.csv", hcat(thatd, lld))
