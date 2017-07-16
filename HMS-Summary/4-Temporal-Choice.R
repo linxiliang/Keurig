@@ -23,12 +23,20 @@ T_purchases[,`:=`(Status = factor(ifelse(holder==0&ever_holder==0, "Never Adopte
 T_purchases[, `:=`(med = round(median(Percent), 3)), by = c("holder", "ever_holder")]
 
 pdf(file=paste(graph_dir, "/figs/HMS-Temporal-Switching-BAfter.pdf", sep=""), width=8, height=5)
-ggplot(T_purchases, aes(x=Percent))+ theme_minimal() +facet_wrap( ~ Status)+
+ggplot(T_purchases, aes(x=Percent, fill=Status))+ theme_minimal() +facet_wrap( ~ Status)+
   scale_x_continuous("Percent of Trips Choosing a Subset of Brands of Last Trip", limits = c(0, 1))+
-  geom_histogram(alpha=1, center=0.05, aes(y = ..density..), binwidth=0.10, col="grey30", fill="skyblue")+
-  geom_vline(aes(xintercept = med), col="red")
+  geom_histogram(alpha=1, center=0.05, aes(y = ..density..), binwidth=0.10, col="grey30")+
+  geom_vline(aes(xintercept = med), col="red") + 
+  scale_fill_manual(values=c("skyblue", "skyblue", "hotpink"), guide=F)
 dev.off()
 
+pdf(file=paste(graph_dir, "/figs/HMS-TemporalS-BAfter.pdf", sep=""), width=6, height=4)
+ggplot(T_purchases[ever_holder==1, ], aes(x=Percent, fill=Status))+ theme_minimal() +facet_wrap( ~ Status)+
+  scale_x_continuous("Percent of Trips Choosing a Subset of Brands of Last Trip", limits = c(0, 1))+
+  geom_histogram(alpha=1, center=0.05, aes(y = ..density..), binwidth=0.10, col="grey30")+
+  geom_vline(aes(xintercept = med), col="red") + 
+  scale_fill_manual(values=c("skyblue", "hotpink"), guide=F)
+dev.off()
 
 # Treatment versus control
 setkey(treat_ctrl_panel, household_code, treat, after, purchase_date, trip_code_uc)

@@ -249,7 +249,7 @@ hh_inventory[, first_panel_purch_week := min(first_panel_purch_week), by = c("ho
 hh_inventory[, ptype_lag:=names(sort(-table(strsplit(ptype_lag, " --- "))))[1], 
              by = c("household_code", "week_end", "panel_year")]
 
-# Get the average consumption rate by gound coffee and Keurig-Kcups
+# Get the average consumption rate by gound coffee and Keurig-KCups
 hh_rate = purchases[, .(quantity = sum(quantity * size1_amount)), by = .(household_code, purchase_date, ptype)]
 setkeyv(hh_rate, c("household_code", "purchase_date", "ptype"))
 hh_rate[, norder:=1:.N, by = c("household_code", "purchase_date")] # Ignore cases where multiple purchases are made in the same day.

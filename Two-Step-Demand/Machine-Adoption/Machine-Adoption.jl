@@ -3,8 +3,8 @@
 # Jan 2017
 
 # Setting for parallel computation
-test_run = false;
-remote = true;
+test_run = true;
+remote = false;
 if remote
   addprocs(10, restrict=false)
   machines = [("bushgcn02", 10), ("bushgcn03", 10), ("bushgcn04", 10), ("bushgcn05", 10), ("bushgcn06", 10)]
@@ -38,9 +38,9 @@ broad_mpi(:(using Distributions, Optim, FastGaussQuadrature, Calculus))
 # Parameter settings
 @everywhere β  = 0.995;
 # δ' = α0 + α1⋅δ + ϵ, ϵ~N(0,σ0^2)
-@everywhere α0 = 0.08531636;
-@everywhere α1 = 0.8607264;
-@everywhere σ0 = 0.2405738;
+@everywhere α0 = 0.1323974;
+@everywhere α1 = 0.9183247;
+@everywhere σ0 = 0.5497728;
 # Reference Price: p_ref' = ω⋅price + (1-ω)⋅p_ref
 @everywhere ω = 0.2806031
 # Price: price' = ρ0 + ρ1⋅price + ɛ, ɛ~N(0,σ1^2)
@@ -54,7 +54,7 @@ broad_mpi(:(using Distributions, Optim, FastGaussQuadrature, Calculus))
 # Chebyshev Approximation Setup
 @everywhere nodes = 20; # Degree of Chebyshev Zeros (nodes)
 @everywhere order = 5; # Degree of Chebyshev Polynomials
-@everywhere (a, b) = (0., 20.); # a need to be greater/equal to 1 for the function to be well behaved.
+@everywhere (a, b) = (-10., 60.); # a need to be greater/equal to 1 for the function to be well behaved.
 (cnode, cweight)=gausschebyshev(nodes); # Interpolation Nodes
 tcnode = (cnode+1) * (b-a)/2 + a; # Transformed nodes
 
@@ -72,7 +72,7 @@ else
       nx = nx+1;
       W1n = W1V(W1)
       err = sum(abs(W1n-W1))
-      #println("Error is $(err), and interation is $(nx)")
+      println("Error is $(err), and interation is $(nx)")
       W1 = W1n
   end
   W1coef = getcoef(W1)
@@ -122,7 +122,7 @@ end
 # MCMC Draws
 burnin = 0;
 thin   = 1;
-draws  = 40000;
+draws  = 20000;
 totdraws = draws*thin + burnin;
 npar = n_x + n_z;
 
@@ -135,21 +135,21 @@ else
 end
 
 # Propose a starting value
-@everywhere theta0 = [-17.5, -2.0, 3.6]
+@everywhere theta0 = [-60.2, -3.6, 3.8]
 @everywhere kappa0 = zeros(Float64, n_z)
-sigs = diagm([0.1, 0.001, 0.001])
+sigs = diagm([10.1, 0.73, 0.075])
 walkdistr = MvNormal(zeros(n_x), sigs);
-ksigs = diagm([0.001, 0.0041, 0.0042, 0.0004, 0.001, 0.001, 0.0001])
+ksigs = diagm([0.378, 0.1558, 0.2232, 0.0102, 0.3646, 0.19914, 1.727257e-06])
 kwalkdis = MvNormal(zeros(n_z), ksigs);
 
 pd = Uniform(minimum(XMat[:,1]), maximum(XMat[:,1]))
 pbard = Uniform(minimum(XMat[:,2]), maximum(XMat[:,2]))
 mud = Uniform(minimum(XMat[:,3]), maximum(XMat[:,3]))
 
-@everywhere sH = diagm([9*σ1^2, 10.^2, 9*σ0^2]);
-@eval @everywhere H = 9 * $sigs
+@everywhere sH = diagm([3*σ1^2, 9.^2, 3*σ0^2]);
+@eval @everywhere H = 1/2 * $sigs
 @everywhere N_0 = 1500
-thtild = theta0 .+ 5*rand(walkdistr, N_0);
+thtild = theta0 .+ 1*rand(walkdistr, N_0);
 xtild = zeros(Float64, n_x, N_0);
 stild = zeros(Float64, n_x, N_0);
 wtild = ones(Float64, N_0);
@@ -250,6 +250,10 @@ for d=1:totdraws
       broad_mpi(:(kappa1 = $kappa1))
     end
 
+    if (d==5000)
+      @eval @everywhere H = 1/9 * $sigs
+    end
+
     # Compute the pdfs
     tdist1 = MvNormal(theta1, H);
     broad_mpi(:(tdist1 = $tdist1))
@@ -333,4 +337,4 @@ for d=1:totdraws
     println("Finished drawing $(d) out of $(totdraws)")
 end
 
-writedlm("Data/Bayes-MCMC/Adoption-Coef-MU-FirstIteration.csv", hcat(thatd, lld))
+writedlm("Data/Bayes-MCMC/Adoption-Coef-MU-F40000.csv", hcat(thatd, lld))

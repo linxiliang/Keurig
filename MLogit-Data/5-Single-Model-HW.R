@@ -1,5 +1,7 @@
 #---------------------------------------------------------------------------------------------------#
 # Load appropriate data
+load(paste(output_dir, "/Assist_Data_Sets_Retailer_Prices.RData", sep=""))
+
 # Load HH file with flags
 load(paste(meta_dir, "/HH-Holder-Flags.RData", sep=""))
 load(paste(meta_dir, "/HH-Cleaned.RData", sep=""))
@@ -11,11 +13,6 @@ load(paste(HMS_trip_dir, "/Trips.RData", sep=""))
 load(paste(meta_dir, "/Products.RData", sep=""))
 products[.("064964520029", 1), upc_descr:="KK-C CF BRWR K45/GCSC&WF="] # is actually K45
 products[.("064964500440", 1), upc_descr:="KRIG CF BRWR B44"] # is actually B44
-
-# Top DMA list
-top_dma_list = c(501, 506, 504, 602, 803, 511, 539, 623, 618, 505, 
-                 613, 819, 524, 534, 533, 753, 510, 508, 514, 512, 
-                 517, 807, 751, 862, 535, 521, 548, 609, 566, 641) 
 
 # Cutoff week
 cut_week = "2008-01-01"
@@ -92,9 +89,9 @@ dma_rank_list = dma_rank_list[order(-nhh), ]
 dma_rank_list[, cumshare := cumsum(nhh/sum(nhh))]
 
 # Obtain Household Warehouse shopping status
-warehouse_retailers = c(9101, 9103, 9104)
-trips[, quarter:= paste(format(purchase_date, "%y/"), 0, 
-                        sub( "Q", "", quarters(purchase_date) ), sep = "")]
+warehouse_retailers = retailers[channel_type == "Warehouse Club", retailer_code]
+trips[, week_end := wkend(purchase_date)]
+trips[, quarter:= paste(format(week_end, "%y/"), 0, sub( "Q", "", quarters(week_end) ), sep = "")]
 trips[, warehouse:=as.integer(retailer_code %in% warehouse_retailers)]
 hh_ware_status = trips[, .(warehouse=as.integer(sum(warehouse==1)>=1)), 
                        by = c("household_code", "panel_year")]
@@ -224,8 +221,10 @@ products[, upc_num := as.integer64(upc)]
 setkeyv(move, c("upc_num", "upc_ver_uc"))
 setkeyv(products, c("upc_num", "upc_ver_uc"))
 products[, keurig:=as.integer(ptype=="KEURIG")]
-move = move[products[,.(upc_num, upc, upc_ver_uc, brand_descr, series)], nomatch=0L]
+move = move[products[,.(upc_num, upc, upc_ver_uc, brand_descr, series, ptype)], nomatch=0L]
 move[, upc_num:=NULL]
+move[ptype=="KEURIG" & !is.na(base_price), table((base_price-imputed_price)/base_price >= 0.05)]
+move[ptype=="OTHER" & !is.na(base_price), table((base_price-imputed_price)/base_price >= 0.05)]
 gc()
 
 # Only consider purchases of Keurig Machines -- not anything else.
@@ -402,6 +401,11 @@ hms_hw_prices[is.na(price), price := price_regular]
 hms_hw_prices[price>=price_regular, price := price_regular] # Likely measurement error, and only 44 observations.
 save(hms_hw_prices, file = paste(output_dir, "/HMS-HW-Prices.RData", sep=""))
 
+# Check price -- whether hardware price imputation is good using HMS
+setkey(hms_hw_prices, retailer_code, series, week_end)
+setkey(purchases, retailer_code, series, week_end)
+pcheck = purchases[hms_hw_prices[,.(retailer_code, series, week_end, price, price_regular)], nomatch=0L]
+pcheck[series==4, cor(price, i.price)]
 # ----------------------------------------------------------------------------------------------------#
 # Create the combined hardware price panel
 hms_hw_prices = hms_hw_prices[, .(retailer_code, series, week_end, price, price_regular)]
@@ -470,8 +474,8 @@ hw_p_retailer[series==4, `:=`(price = price-30)]
 hw_p_retailer[series==5, `:=`(price = price-60)]
 hw_p_retailer[series==4, `:=`(price_regular = price_regular-30)]
 hw_p_retailer[series==5, `:=`(price_regular = price_regular-60)]
-hw_p_retailer = hw_p_retailer[, .(price = (price * revenue)/sum(revenue),
-                                  price_regular = (price_regular * revenue)/sum(revenue)), 
+hw_p_retailer = hw_p_retailer[, .(price = (price * np)/sum(np),
+                                  price_regular = (price_regular * np)/sum(np)), 
                               by = c("retailer_code", "week_end")]
 
 # -----------------------------------------------------------------------------------------------#
@@ -524,8 +528,8 @@ setkey(hw_p_index, series)
 hw_p_index = hw_p_index[series_sales, nomatch=0L]
 
 # Obtain the overall price environment
-hw_p_index = hw_p_index[, .(price = sum(price*revenue)/sum(revenue), 
-                            price_regular = sum(price_regular*revenue)/sum(revenue)), 
+hw_p_index = hw_p_index[, .(price = sum(price*np)/sum(np), 
+                            price_regular = sum(price_regular*np)/sum(np)), 
                         by = c("household_code", "dma_code", "warehouse", "week_end")]
 setkey(hw_p_index, household_code, dma_code, warehouse, week_end)
 

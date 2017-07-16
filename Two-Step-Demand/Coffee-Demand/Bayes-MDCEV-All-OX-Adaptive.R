@@ -13,7 +13,7 @@ rm(list = ls())               # Clear workspace
 #                613, 819, 524, 534, 533, 753, 510, 508, 514, 512, 
 #                517, 807, 751, 862, 535, 521, 548, 609, 566, 641) # Big Markets
 market_code = "all"
-sratio = 0.05 # Sampling ratio if needed.
+sratio = 0.01 # Sampling ratio if needed.
 
 # Load Required packages
 require(data.table)
@@ -87,15 +87,17 @@ machineAddresses <- list(
        ncore=32)
 )
 
-primary <- 'bushgcn30'
+primary <- 'bushgcn10'
 machineAddresses <- list(
   list(host=primary, user='xlin0',
-       ncore=28),
-  list(host='bushgcn31',user='xlin0',
-       ncore=28),
-  list(host='bushgcn32',user='xlin0',
-       ncore=28)
-)
+       ncore=24),
+  list(host='bushgcn11',user='xlin0',
+       ncore=24),
+  list(host='bushgcn12',user='xlin0',
+       ncore=24),
+  list(host='bushgcn13',user='xlin0',
+       ncore=24)
+  )
 
 spec <- lapply(machineAddresses,
                function(machine) {
@@ -142,13 +144,16 @@ source(paste(code_dir, 'mdc-functions-OX.R', sep=""))
 load(paste(input_dir,"MDC-Cond-Purchase-Flavors.RData",sep=""))
 hh_market_prod = hh_market_prod[brand_descr!="0NOTHING", ]
 hh_market_prod[grep(" KEURIG", brand_descr), keurig:=1]
+# Make nprod and nbrand to logs
+hh_market_prod[, `:=`(nbrand = log(nbrand), nprod = log(nprod))]
+hh_market_prod[,`:=`(nbrandg=ifelse(keurig==0, nbrand, 0), nbrandk=ifelse(keurig==1, nbrand, 0))]
 gc()
 
 # Names settings
 nb = hh_market_prod[, max(brand)]
 bnames = paste0("a", c(2:nb))
-xnames = c(bnames, "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
-           "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", "nbrand")
+xnames = c(bnames, "keurig", "flavored", "lightR", "medDR", "darkR", "assorted", "kona",
+          "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", "nbrand")
 znames = c("overall_rate", "inc40", "inc50", "inc60", "inc70",
            "hhsize2", "hhsize3", "hhsize5", "twofamily", "threefamily",
            "fulltime", "presence_of_children",
@@ -245,7 +250,7 @@ gc()
 # MCMC Settings
 burnin = 0
 thin   = 3
-draws  = 9000
+draws  = 8000
 tunein = 0
 totdraws = draws*thin + burnin
 
@@ -347,7 +352,7 @@ for (d in 1:totdraws){
 }
 
 # Save output to a dataset
-inx = seq(1, 3333, 3)
+inx = seq(5001, 9000, 2)
 inx = seq(1, 10000, 4)
 bac_dt = invisible(clusterEvalQ(cl, ac_dt))
 bac_dt = rbindlist(bac_dt)

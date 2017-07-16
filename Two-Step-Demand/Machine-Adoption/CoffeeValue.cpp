@@ -1,5 +1,6 @@
-#include <Rcpp.h>
 #include <math.h>
+// [[Rcpp::depends(RcppArmadillo)]]
+#include <RcppArmadillo.h>
 using namespace Rcpp;
 
 // [[Rcpp::export]]
@@ -40,4 +41,13 @@ double cufun(double e1, double m0, double rho, NumericVector alpha, NumericVecto
   }
   double fv = pow(xiv, rho) - exp(m0)*sum(e);
   return fv;
+}
+
+// [[Rcpp::export]]
+double loglike(arma::vec beta, arma::vec y, arma::mat X){
+  arma::vec expv = exp(X * beta);
+  arma::vec prob = expv/(1+expv);
+  arma::vec nprob = 1 - prob;
+  double logl = dot(log(prob), y) + dot(log(nprob), 1-y);
+  return logl;
 }

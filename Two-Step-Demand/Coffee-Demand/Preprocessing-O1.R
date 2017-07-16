@@ -1,6 +1,3 @@
-# Make nprod and nbrand to logs
-hh_market_prod[, `:=`(nbrand = log(nbrand), nprod = log(nprod))]
-
 # Sample 5% of purchasing trips
 t_list = hh_market_prod[, unique(t)]
 nsamp = ceiling(sratio*length(t_list))

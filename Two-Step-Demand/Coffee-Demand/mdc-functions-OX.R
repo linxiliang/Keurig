@@ -107,6 +107,11 @@ ihessfun <- function(i){
 #   return(nti/nt * hess)
 # }
 
+ihessfun <- function (i){
+  nti = hh_market_prod[.(i), nt_i][1]
+  return(nti/nsamp * hess)
+}
+
 i_ll <- function(b, i=1){
   b1 = b[1:nx]
   b2 = b[(nx+1):(nx+nk)]
