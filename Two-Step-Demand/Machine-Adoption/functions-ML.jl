@@ -1,40 +1,15 @@
- T(i, x) = cos((i-1) .* acos(x));
-
  # Functions
- function capprox(w, x::Real)
-     length(w) == nodes ? length(w) : error("function values not the same length as interpolation nodes")
-     Wmat = repmat(w, 1, (order+1)); # Step 3 - function value at transformed node
-     ccoef = diag(Tmat * Wmat) ./ sum(Tmat.^2,2)[:,1]; #Step 4 Compute coefficients
-     if (a<=x<=b)
-         return sum(Float64[T(i, 2 * (x-a)/(b-a) - 1) * ccoef[i] for i = 1:(order+1)]);
-     elseif (x<a)
-         abase = capprox(w, a)
-         aslope = (capprox(w, a+0.0001) - abase)/0.0001
-         return abase + aslope * (x-a) # Linear Extrapolation
-     else
-         bbase = capprox(w, b)
-         bslope = (bbase - capprox(w, b - 0.0001))/0.0001
-         return bbase + bslope * (x-b) # Linear Extrapolation
-     end
- end
-
- function getcoef(w)
-     Wmat = repmat(w, 1, (order+1)); # Step 3 - function value at transformed node
-     ccoef = diag(Tmat * Wmat) ./ sum(Tmat.^2,2)[:,1]; #Step 4 Compute coefficients
-     return ccoef
- end
-
  (hermitenodes, hermitewts)=gausshermite(9);
  function hermiteint(f::Function, μ::Float64, σ::Float64)
      return sqrt(1./pi) * sum(map(f, sqrt(2.)*σ*hermitenodes + μ) .* hermitewts);
  end
 
- function W1V(W)
-     wappx(x::Real) = capprox(W, x);
+ function W1V(cweights::Array{Float64, 1})
+     wappx(x::Real) = chebyshev_evaluate(cweights,[x],delta_order,delta_range)
      function wfun(ν::Real)
          return ν + β * hermiteint(wappx, α0+α1*ν, σ0)
      end
-     return map(wfun, tcnode)
+     return map(wfun, delta_nodes)
  end
 
  function coefun(ccoef, x::Real)
@@ -63,7 +38,7 @@
  end
 
  function W0V(θ1::Vector, x::Vector, w::Float64)
-     return (θ1[3])^2 * log(exp(β*w/exp(θ1[3])) + exp((θ1[1] + θ1[2] * x[1] + coefun(W1coef, x[3]))/(θ1[3])^2))
+     return exp(θ1[3]) * log(exp(β*w/exp(θ1[3])) + exp((θ1[1] + θ1[2] * x[1] + coefun(W1coef, x[3]))/(θ1[3])))
  end
 
  # Compute the value of holding the machine for given state

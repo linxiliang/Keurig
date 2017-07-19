@@ -234,39 +234,40 @@ load(paste0(output_dir, "/Delta-NoBestMatch-100.RData"))
 load(paste0(output_dir, "/Delta-OnlyBestMatch-100.RData"))
 load(paste0(output_dir, "/HH-Choice-Value.RData"))
 
-cval_list[, `:=`(mu_diff = (av-gv)*pprob)]
+cval_list[, `:=`(mu_diff = (av-gv)*pprob1)]
 mean_gain = cval_list[, .(delta25 = quantile(mu_diff, 0.25), delta50 = median(mu_diff), 
                           delta75 = quantile(mu_diff, 0.75)), by = "week_end"]
-mean_gain[, Type:= "Original Gain"]
+mean_gain[, Type:= "Original Option Value"]
 setkey(mean_gain, week_end)
 
 cval_NoQ = rbindlist(cval_NoQ)
-cval_NoQ[, `:=`(mu_diff = (av-gv)*pprob)]
+cval_NoQ[, `:=`(mu_diff = (av-gv)*pprob1)]
 mean_gain_NoQ = cval_NoQ[, .(delta25 = quantile(mu_diff, 0.25), delta50 = median(mu_diff), 
                              delta75 = quantile(mu_diff, 0.75)), by = "week_end"]
-mean_gain_NoQ[, Type := "No K-Cup Quality"]
+mean_gain_NoQ[, Type := "Remove K-Cup Premium"]
 setkey(mean_gain_NoQ, week_end)
 
 cval_NoB = rbindlist(cval_NoB)
-cval_NoB[, `:=`(mu_diff = (av-gv)*pprob)]
+cval_NoB[, `:=`(mu_diff = (av-gv)*pprob1)]
 mean_gain_NoB = cval_NoB[, .(delta25 = quantile(mu_diff, 0.25), delta50 = median(mu_diff), 
                              delta75 = quantile(mu_diff, 0.75)), by = "week_end"]
 mean_gain_NoB[, Type := "No Best Match"]
 setkey(mean_gain_NoB, week_end)
 
 cval_OnB = rbindlist(cval_OnB)
-cval_OnB[, `:=`(mu_diff = (av-gv)*pprob)]
+cval_OnB[, `:=`(mu_diff = (av-gv)*pprob1)]
 mean_gain_OnB = cval_OnB[, .(delta25 = quantile(mu_diff, 0.25), delta50 = median(mu_diff), 
                              delta75 = quantile(mu_diff, 0.75)), by = "week_end"]
 mean_gain_OnB[, Type := "Only Best Match"]
 setkey(mean_gain_OnB, week_end)
 
 mean_gain = rbindlist(list(mean_gain, mean_gain_NoQ, mean_gain_NoB, mean_gain_OnB))
-mean_gain[, Type := factor(Type, levels = c("Original Gain", "No Best Match", "No K-Cup Quality", "Only Best Match"))]
+mean_gain[, Type := factor(Type, levels = c("Original Option Value", "No Best Match", "Remove K-Cup Premium", "Only Best Match"))]
 
 # Plot these
-ggplot(mean_gain, aes(x = week_end, y = delta50, colour = Type, linetype = Type)) + geom_line() + theme_minimal()+
-  theme(legend.justification=c(0,1), legend.position=c(0,1)) + labs(x = "Time (Week)", y = "Median Option Value")
+ggplot(mean_gain[Type!="Only Best Match"], aes(x = week_end, y = delta50, colour = Type, linetype = Type)) + 
+  geom_line() + theme_minimal()+theme(legend.justification=c(0,1), legend.position=c(0,1)) + 
+  labs(x = "Time (Week)", y = "Median Option Value")
 rowMax <- function(data) apply(data, 1, max, na.rm = TRUE)
 prefm = rowMax(pref[, bspec_ind])
 for (i in bspec_ind){

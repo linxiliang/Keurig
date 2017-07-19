@@ -87,16 +87,16 @@ machineAddresses <- list(
        ncore=32)
 )
 
-primary <- 'bushgcn10'
+primary <- 'bushgcn30'
 machineAddresses <- list(
   list(host=primary, user='xlin0',
-       ncore=24),
-  list(host='bushgcn11',user='xlin0',
-       ncore=24),
-  list(host='bushgcn12',user='xlin0',
-       ncore=24),
-  list(host='bushgcn13',user='xlin0',
-       ncore=24)
+       ncore=28),
+  list(host='bushgcn31',user='xlin0',
+       ncore=28),
+  list(host='bushgcn32',user='xlin0',
+       ncore=28),
+  list(host='bushgcn33',user='xlin0',
+       ncore=28)
   )
 
 spec <- lapply(machineAddresses,
@@ -153,7 +153,7 @@ gc()
 nb = hh_market_prod[, max(brand)]
 bnames = paste0("a", c(2:nb))
 xnames = c(bnames, "keurig", "flavored", "lightR", "medDR", "darkR", "assorted", "kona",
-          "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", "nbrand")
+          "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag")
 znames = c("overall_rate", "inc40", "inc50", "inc60", "inc70",
            "hhsize2", "hhsize3", "hhsize5", "twofamily", "threefamily",
            "fulltime", "presence_of_children",
@@ -244,6 +244,7 @@ hess_list = clusterEvalQ(cl, lapply(hh_list, ihessfun))
 hess_list = unlist(hess_list, recursive=F)
 save(opt0, hess, par_list, hess_list, file = paste(input_dir, "/Hessian-OX.RData", sep=""))
 # save(opt0, hess, hess_list, file = paste(input_dir, "/Posterior-Variance.RData", sep=""))
+# save(opt0, hess, hess_list, file = paste(input_dir, "/Hess-OX-NAR.RData", sep=""))
 gc()
 #---------------------------------------------------------------------------------------------------------#
 # Bayesian Estimation 
@@ -264,7 +265,7 @@ Dbar = matrix(rep(0, nz*np), nrow=nz)
 s2 = 2.93^2/np;
 
 # Distribute the functions and relevant data to the workers.
-invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hessian-OX.RData", sep=""))))
+invisible(clusterEvalQ(cl, load(paste(input_dir, "/Hess-OX-NAR.RData", sep=""))))
 invisible(clusterEvalQ(cl, load(paste(input_dir, "/Homo-OX-Opt0.RData", sep=""))))
 invisible(clusterEvalQ(cl, load(paste(input_dir, "/par_temp.RData", sep=""))))
 # invisible(clusterEvalQ(cl, load(paste(input_dir, "/Posterior-Variance.RData", sep=""))))
@@ -286,7 +287,7 @@ invisible(clusterEvalQ(cl, (hh_list_samp = sort(sample(hh_list, ceiling(length(h
 # Tune the betas for each household
 beta0 = clusterEvalQ(cl, initrun())
 #beta0 = clusterEvalQ(cl, bcorrect())
-#beta0 = clusterEvalQ(cl, beta_dt)
+beta0 = clusterEvalQ(cl, beta_dt)
 bhnames = as.integer(unlist(lapply(beta0, names)))
 beta0 = matrix(t(unlist(beta0)), ncol=np, byrow=T)
 beta0 = beta0[order(bhnames), ]

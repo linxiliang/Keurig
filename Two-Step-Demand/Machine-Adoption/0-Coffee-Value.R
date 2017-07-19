@@ -308,6 +308,8 @@ save(cval_list, mean_gain, file = paste(output_dir, "/HH-Util-Diff.RData", sep="
 
 load(paste(output_dir, "/HH-Util-Diff.RData", sep=""))
 load(paste(output_dir, "/HH-HW-Panel.RData", sep=""))
+cval_list[, mu_diff:=(av-gv)*pprob1]
+
 # Merge consumption value back to the value function
 setkey(cval_list, household_code, week_end)
 setkey(hw_panel, household_code, week_end)

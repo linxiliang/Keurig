@@ -586,36 +586,24 @@ write.csv(hw_p_index, file="HW-P-Index.csv", row.names = FALSE)
 # For each week, the consumer aware of the price environment decide whether to purchase a Keurig machine. 
 
 # Make the initial panel
-hw_panel = data.table(expand.grid(household_code = unique(hh_list$household_code),
-                                  week_end = unique(hw_prices$week_end)))
-
-setkey(hw_panel, household_code)
+setkey(hw_p_index, household_code)
 setkey(hh_list, household_code)
+
 # Below we filter households whose adoption date is uncertain and may happen before panel period.
 # Only keep households observed to purchase hardware, 
 # imputed to purchase hardware or never purchase purchased hardware
-hw_panel=hw_panel[hh_list[,.(household_code, hware, kholder, himputed, hseries, 
+hw_panel=hw_p_index[hh_list[,.(household_code, hware, kholder, himputed, hseries, 
                              hfirst_date, hlast_date, sfirst_date, slast_date, 
                              imputed_hfirst, imputed_hlast, k_first_date)], nomatch=0L]
 
 # Drop households who adopted the machine, but uncertain when it happens
+uncertain_hhs = hw_panel[(kholder==1 & is.na(imputed_hfirst)), unique(household_code)]
 hw_panel=hw_panel[!(kholder==1 & is.na(imputed_hfirst)), ]
 
 # filter trips adoption date
 setkey(hw_panel, household_code, week_end)
-hw_panel[, wfilter := as.integer(week_end<=(imputed_hfirst+6) | is.na(imputed_hfirst))]
-
-# Get the dma code of the household
-hw_panel[, panel_year := year(week_end)]
-setkey(hw_panel, household_code, panel_year)
-hw_panel = hw_panel[hh[, .(household_code, panel_year, dma_code)], nomatch=0L]
-hw_panel[, quarter:= paste(format(week_end, "%y/"), 0, 
-                           sub( "Q", "", quarters(week_end) ), sep = "")]
-
-# Next step is to merge in the prices
-setkeyv(hw_panel, c("household_code", "dma_code", "week_end",  "panel_year", "quarter"))
-setkeyv(hw_p_index, c("household_code", "dma_code", "week_end", "panel_year", "quarter"))
-hw_panel = hw_panel[hw_p_index, nomatch=0L]
+hw_panel[, imputed_hfirst_week := wkend(imputed_hfirst)]
+hw_panel[, wfilter := as.integer(week_end <= imputed_hfirst_week | is.na(imputed_hfirst_week))]
 
 # Setkey and save the data
 setkey(hw_panel, week_end)

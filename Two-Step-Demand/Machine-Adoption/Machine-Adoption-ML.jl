@@ -4,81 +4,59 @@
 
 # Setting for parallel computation
 test_run = true;
-remote = false;
-if remote
-  addprocs(10, restrict=false)
-  machines = [("bushgcn02", 10), ("bushgcn03", 10), ("bushgcn04", 10), ("bushgcn05", 10), ("bushgcn06", 10)]
-  # machines = [("bushgcn33", 28)]
-  # machines = [("bushgcn11", 12), ("bushgcn12", 12)]
-  addprocs(machines; tunnel=true)
-else
-  addprocs(4; restrict=false)
-end
-np = workers()
-remotecall_fetch(rand, 2, 20) # Test worker
-
-function broad_mpi(expr::Expr)
-  for p in np
-      @spawnat p eval(expr)
-  end
-end
-broad_mpi(:(np = $np));
 
 #Set Directory
-@everywhere cd("$(homedir())/Keurig");
+cd("$(homedir())/Keurig");
 
 # Computation Settings
-@everywhere controls = true; # Add controls such as seasonality
-@everywhere cons_av = false; # Constant adoption value
+controls = true; # Add controls such as seasonality
+cons_av = false; # Constant adoption value
 
 # Load Packages
-using Distributions, Optim, FastGaussQuadrature, Calculus
-broad_mpi(:(using Distributions, Optim, FastGaussQuadrature, Calculus))
+using Distributions, Optim, FastGaussQuadrature, Calculus, ChebyshevApprox
 
 # Parameter settings
-@everywhere β  = 0.995;
+β  = 0.995;
 # δ' = α0 + α1⋅δ + ϵ, ϵ~N(0,σ0^2)
-@everywhere α0 = 0.1323974;
-@everywhere α1 = 0.91602396;
-@everywhere σ0 = 0.5124003;
+α0 = 0.1323974;
+α1 = 0.91602396;
+σ0 = 0.5124003;
 # Reference Price: p_ref' = ω⋅price + (1-ω)⋅p_ref
-@everywhere ω = 0.286745
+ω = 0.286745
 # Price: price' = ρ0 + ρ1⋅price + ɛ, ɛ~N(0,σ1^2)
-@everywhere ρ0 = 7.2280977
-@everywhere ρ1 = 0.9498492
-@everywhere σ1 = 6.62
+ρ0 = 7.2280977
+ρ1 = 0.9498492
+σ1 = 6.62
 
 # Load all function
-@everywhere include("$(homedir())/Keurig/Scripts/Two-Step-Demand/Machine-Adoption/functions.jl")
+include("$(homedir())/Keurig/Scripts/Two-Step-Demand/Machine-Adoption/functions-ML.jl")
 
 # Chebyshev Approximation Setup
-@everywhere nodes = 20; # Degree of Chebyshev Zeros (nodes)
-@everywhere order = 5; # Degree of Chebyshev Polynomials
-@everywhere (a, b) = (-10., 60.); # a need to be greater/equal to 1 for the function to be well behaved.
-(cnode, cweight)=gausschebyshev(nodes); # Interpolation Nodes
-tcnode = (cnode+1) * (b-a)/2 + a; # Transformed nodes
-
-W1 = zeros(Float64, nodes);
-Tmat = Float64[T(i,j) for i = 1:(order+1), j in cnode]; # Chebyshev Polynomial Matrix
+delta_n = 20; # Degree of Chebyshev Zeros (nodes)
+delta_order = [5]; # Degree of Chebyshev Polynomials
+delta_range = [60., -10.] # Range of option value
+delta_nodes = chebyshev_nodes(delta_n, delta_range)
+W1 = zeros(Float64, delta_n);
 
 # Compute Value function
 if cons_av
-  W1coef = zeros(Float64, order+1)
+  delta_cheby_weights = zeros(Float64, delta_order+1)
 else
   tol = 1e-8
   err = 1;
   nx = 0;
   while (err > tol)
       nx = nx+1;
-      W1n = W1V(W1)
+      delta_cheby_weights = chebyshev_weights(W1, delta_nodes, delta_order, delta_range)
+      W1n = W1V(delta_cheby_weights)
       err = sum(abs(W1n-W1))
       println("Error is $(err), and interation is $(nx)")
       W1 = W1n
   end
-  W1coef = getcoef(W1)
 end
-broad_mpi(:(W1coef = $W1coef))
+wappx(x::Real) = chebyshev_evaluate(delta_cheby_weights,[x],delta_order,delta_range)
 
+# Read estimation data
 hh_panel = readdlm("Data/Machine-Adoption/HW-MU-Panel.csv", ',', skipstart=1); # Household Machine Adoption Panel
 
 # NA list
@@ -93,31 +71,21 @@ if test_run
   hh_panel = hh_panel[1:100000, :];
 end
 (nr, nc) = size(hh_panel)
-chunk_size = ceil(Int, nr/length(np))
-@sync begin
-    for p in np
-        if p != np[end]
-            r_expr = :(hh_panel = $(hh_panel[((p-2)*chunk_size+1):((p-1)*chunk_size), :]))
-        else
-            r_expr = :(hh_panel = $(hh_panel[((p-2)*chunk_size+1):end, :]))
-        end
-        @spawnat p eval(r_expr)
-    end
-end
 
-@everywhere purch_vec = convert(Array{Int64}, hh_panel[:, 9])
-@everywhere XMat = convert(Array{Float64}, hh_panel[:, [5, 6, 8]])
-@everywhere ZMat = hh_panel[:, vcat(10:15, 4)]
-@everywhere ZMat = sparse(convert(Array{Float64}, ZMat))
-@everywhere pbar_n2 =  ω * XMat[:,1] + (1-ω) * XMat[:,2];
-@everywhere SMat = transpose(hcat(ρ0 + ρ1 * pbar_n2, pbar_n2, α0 + α1 * XMat[:,3]))
-@everywhere (nobs, n_x) = size(XMat)
-@everywhere n_z= size(ZMat)[2]
+purch_vec = convert(Array{Int64}, hh_panel[:, 9])
+XMat = convert(Array{Float64}, hh_panel[:, [5, 6, 8]])
+ZMat = hh_panel[:, vcat(10:15, 4)]
+ZMat = sparse(convert(Array{Float64}, ZMat))
+pbar_n2 =  ω * XMat[:,1] + (1-ω) * XMat[:,2];
+SMat = transpose(hcat(ρ0 + ρ1 * pbar_n2, pbar_n2, α0 + α1 * XMat[:,3]))
+(nobs, n_x) = size(XMat)
+n_z= size(ZMat)[2]
+W1vec = [wappx(XMat[i,3]) for i in 1:nobs]
+pbar_n2 = 0;
+gc();
 
-@everywhere pbar_n2 = 0;
-@everywhere gc();
+# Compute the states
 
-@everywhere W1vec=W1fun(nobs)
 
 # MCMC Draws
 burnin = 0;
