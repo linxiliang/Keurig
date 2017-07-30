@@ -27,9 +27,9 @@ function W1V(cweights::Array{Float64, 1})
 end
 
 function ll_fun!(Θ_a::Vector, w_tensor::Array{Float64, 3})
-  # κ = Θ_a[4:10]
-  # w1_b[:] = (Θ_a[1] + Θ_a[2] * XMat[:,1] +  W1Vec)/(Θ_a[3]^2) + ZMat*κ;
-  w1_b[:] = (Θ_a[1] + Θ_a[2] * XMat[:,1] +  W1Vec)/(Θ_a[3]^2) + ZMat*[0.102017,0.781842,0.469667,0.460619,0.155285,-0.185794,0.00360829];
+  #κ = Θ_a[4:10]
+  # w1_b[:] = (Θ_a[1] - (Θ_a[2]^2) * XMat[:,1] +  W1Vec)/(Θ_a[3]^2) + ZMat*κ;
+  w1_b[:] = (Θ_a[1] + Θ_a[2] * XMat[:,1] +  W1Vec)/(Θ_a[3]^2) + ZMat*[0.13671037841663608026, 0.79119170457287690823, 0.35703443779432908478, 0.42949855017590554684, 0.01820777905828507501, -0.13282396850696606694, 0.00279345965294451300];
   for h in 1:nobs
     w0_b[h] = β* hermiteint2d(w_tensor, [SMat[1,h], SMat[3,h]], sigma, SMat[2,h]);
   end
@@ -54,7 +54,8 @@ function ll!(Θ_a::Vector)
         pbar_n2 =  ω * nodes_1[i] + (1-ω) * nodes_2[j];
         mu = [ρ0 + ρ1 * pbar_n2, α0 + α1 * nodes_3[k]];
         EW_v = hermiteint2d(w_tensor, mu, sigma, pbar_n2);
-        wgrid_new[i, j, k] = Θ_a[3]^2 * log(exp(β*EW_v/(Θ_a[3]^2)) + exp((Θ_a[1] + Θ_a[2] * nodes_1[i] + EW1x[k])/(Θ_a[3]^2)))
+        # wgrid_new[i, j, k] = Θ_a[3]^2 * log(exp(β*EW_v/(Θ_a[3]^2)) + exp((Θ_a[1] - (Θ_a[2]^2) * nodes_1[i] + EW1x[k])/(Θ_a[3]^2)))
+        wgrid_new[i, j, k] = Θ_a[3]^2 * log(exp(β*EW_v/(Θ_a[3]^2)) + exp((Θ_a[1] - Θ_a[2] * nodes_1[i] + EW1x[k])/(Θ_a[3]^2)))
       end
       err = sum(abs(wgrid_new-wgrid))
       wgrid[:,:,:] = wgrid_new

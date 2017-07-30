@@ -42,7 +42,7 @@ Rcpp::sourceCpp('Scripts/Two-Step-Demand/Machine-Adoption/CoffeeValue.cpp')
 
 #---------------------------------------------------------------------------------------------------#
 # Initialize Parallel Execution Environment
-cores = detectCores(logical=TRUE)/2
+cores = detectCores(logical=TRUE)
 cl = makeCluster(cores)
 s = .Random.seed
 for (i in 1:length(cl)) {
@@ -70,6 +70,11 @@ if (cond){
   hh_panel = hh_panel[household_code%in%hh_adpt_list, ]
 }
 
+# Brand start and end dates
+anames = c(paste0("a", 2:16), "keurig")
+k_brand_dates = retailer_panel[keurig==1, .(first_week = min(week_end), last_week = max(week_end)),
+                               by = c("dma_code", "brand_descr", "brand_descr_orig", anames)] 
+
 #---------------------------------------------------------------------------------------------------#
 # Compute the adoption value consumer by consumer
 brands = c("OTHER", "CARIBOU KEURIG", "CHOCK FULL O NUTS", "CTL BR", "DONUT HOUSE KEURIG", "DUNKIN' DONUTS",
@@ -85,7 +90,7 @@ xvars = c(paste0("a", 2:16), "keurig", "flavored", "lightR", "medDR", "darkR", "
           "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", "nbrand")
 xnames = c("0NOTHING", brands, "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
            "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", "nbrand")
-clusterExport(cl, c('brands', 'k_specific', 'bspec_ind', 'bgen_ind', 'bindx', 'xvars', 'pref'))
+clusterExport(cl, c('brands', 'anames', 'k_specific', 'bspec_ind', 'bgen_ind', 'bindx', 'xvars', 'pref'))
 
 NoQualityImprove<-function(i, n=1000){
   hh_prob_temp = hh_trip_prob[.(i), ]
@@ -142,19 +147,20 @@ NoBestMatch<-function(i, n=1000){
   
   # Preference modification
   i_pref = pref[as.character(i), ]
-  b_pref = i_pref[bindx]
-  m_b = which(b_pref==max(b_pref))
-  mbv = mean(b_pref[-m_b])
-  mbv_diff = mbv - b_pref[m_b]
-  b_var = paste0("a", bindx[m_b]+1)
-  xadjust = as.integer((hh_retailers_temp[, b_var, with=F][[1]] + hh_retailers_temp[, keurig])==2)
+  bmat = as.matrix(hh_retailers_temp[, anames, with=FALSE])
+  hh_retailers_temp[, `:=`(bintercept = bmat%*%i_pref[1:16])]
+  hh_retailers_temp[keurig==1, `:=`(bmax_ind = (bintercept == max(bintercept)),
+                                    bmean_ind = mean(bintercept)), 
+                    by = c("week_end")]
+  hh_retailers_temp[keurig==0, bmax_ind := FALSE]
+  hh_retailers_temp[, badjust := ifelse(bmax_ind == TRUE, bmean_ind-bintercept, 0)]
   
   xmat = as.matrix(hh_retailers_temp[, xvars, with=FALSE])
   kmat = as.matrix(hh_retailers_temp[, cbind(1-keurig, keurig)])
-  xmat = cbind(xmat, xadjust)
+  xmat = cbind(xmat, hh_retailers_temp$badjust)
   
   # Compute the quality of product
-  hh_retailers_temp[, zb := xmat %*% c(i_pref[1:28], mbv_diff)]
+  hh_retailers_temp[, zb := xmat %*% c(i_pref[1:28], 1)]
   # Compute the alpha of the product
   hh_retailers_temp[, alpha := kmat %*% i_pref[29:30]]
   # Compute the rho
@@ -189,14 +195,13 @@ OnlyBestMatch<-function(i, n=1000){
   
   # Find the best match and eliminate the rest
   i_pref = pref[as.character(i), ]
-  b_pref = i_pref[bspec_ind]
-  m_b = which(b_pref==max(b_pref))
-  b_var = paste0("a", bspec_ind[m_b]+1)
-  xadjust = (hh_retailers_temp[, b_var, with=F][[1]] + hh_retailers_temp[, keurig])==2
-  hh_retailers_temp[, keep_prod := (xadjust|keurig==0)]
-  hh_retailers_temp = hh_retailers_temp[keep_prod==TRUE, ]
-  hh_retailers_temp[keurig==1, nbrand:=log(length(unique(brand_type))), 
-                    by = .(household_code, dma_code, retailer_code, week_end)] # Adjust for crowded product space
+  bmat = as.matrix(hh_retailers_temp[, anames, with=FALSE])
+  hh_retailers_temp[, `:=`(bintercept = bmat%*%i_pref[1:16])]
+  hh_retailers_temp[keurig==1, `:=`(bmax_ind = (bintercept == max(bintercept))), 
+                    by = c("week_end")]
+  hh_retailers_temp[keurig==0, bmax_ind := TRUE]
+  hh_retailers_temp = hh_retailers_temp[bmax_ind==TRUE, ]
+
   xmat = as.matrix(hh_retailers_temp[, xvars, with=FALSE])
   kmat = as.matrix(hh_retailers_temp[, cbind(1-keurig, keurig)])
   
@@ -224,8 +229,13 @@ invisible(clusterEvalQ(cl, load('Data/Machine-Adoption/MU-Diff-Asist.RData')))
 clusterExport(cl, c('NoQualityImprove', 'NoBestMatch', 'OnlyBestMatch'))
 # cval_NoQ = parLapply(cl, hh_codes, NoQualityImprove, n=100)
 cval_NoB = parLapply(cl, hh_codes, NoBestMatch, n=100)
-stopxxx
+save(cval_NoB, file = paste0(output_dir, "/Delta-NoBestMatch-100-Week.RData"))
+
 cval_OnB = parLapply(cl, hh_codes, OnlyBestMatch, n=100)
+save(cval_OnB, file = paste0(output_dir, "/Delta-OnlyBestMatch-100-Week.RData"))
+
+stopxxx
+[-914.347,0.920944,8.25217,0.136033,0.791026,0.357126,0.429503,0.0180938,-0.132098,0.00279388
 save(cval_NoQ, file = paste0(output_dir, "/Delta-NoQualityImprovement-300.RData"))
 save(cval_NoB, file = paste0(output_dir, "/Delta-NoBestMatch-300.RData"))
 save(cval_OnB, file = paste0(output_dir, "/Delta-OnlyBestMatch-100.RData"))

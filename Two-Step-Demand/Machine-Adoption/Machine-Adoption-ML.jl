@@ -3,7 +3,7 @@
 # July 2017
 
 # Setting for parallel computation
-test_run = true;
+test_run = false;
 remote = false;
 if remote
   addprocs(20, restrict=false)
@@ -152,10 +152,10 @@ end
 broad_mpi(:(EW1x = $EW1x))
 
 # Bellman Iteration
-tol = 1e-9;
+tol = 1e-20;
 @everywhere sigma = [σ1, σ0];
 @everywhere w1_b = Array(Float64, nobs);
 @everywhere w0_b = Array(Float64, nobs);
-# Θ_0 = [0.1,-0.1, 10., 0.102017,0.781842,0.469667,0.460619,0.155285,-0.185794,0.00360829]
-Θ_0 = [-357.52, -1.62806, 5.815]
+#Θ_0 = [ -0.1, -10, 8.25206, 0.13671, 0.791192, 0.357034, 0.429499, 0.0182078, -0.132824, 0.00279346]
+Θ_0 = [-914.30630615944130568096, 0.92085775566489336263487, 8.25205944317877815308293]
 lopt = optimize(ll!, Θ_0, NelderMead())
