@@ -161,34 +161,38 @@ rm(pbr_temp)
 pbr_temp = pbrands[ever_holder==1, .(household_code, holder, c1, c2, c3)]
 pbr_temp = melt(pbr_temp, id.vars = c("household_code", "holder"), 
                 measure.vars = c("c1", "c2", "c3"), value.name = "Share")
-pbr_temp[, `:=`(Status = factor(ifelse(holder==0, "Before Adoption", "After Adoption"),
-                                levels=c("Before Adoption", "After Adoption")),
+pbr_temp[, `:=`(Status = factor(ifelse(holder==0, "Before Adoption - Ground Coffee", "After Adoption - Ground and K-Cup"),
+                                levels=c("Before Adoption - Ground Coffee", "After Adoption - Ground and K-Cup")),
                 Type = toupper(variable))]
-pbr_temp[, fillvar := ifelse(Status=="Before Adoption", "skyblue", "hotpink")]
+pbr_temp[, fillvar := ifelse(Status=="Before Adoption - Ground Coffee", "skyblue", "hotpink")]
 pdf(file=paste(graph_dir, "/figs/HMS-CR-BAdoption.pdf", sep=""), width=6, height=4)
 ggplot(pbr_temp, aes(x=Share))+ theme_minimal() +
   geom_histogram(alpha=1, center=0.025, aes(y = ..density..), binwidth=0.05, col="grey30", fill="skyblue")+
   scale_x_continuous("Expenditure Share", limits = c(0, 1)) + facet_grid(Type~Status)
 dev.off()
 
+pbr_temp[, `:=`(cmed = median(Share,na.rm=T)), by = c("Type", "Status")]
 pdf(file=paste(graph_dir, "/figs/HMS-C1-BAdoption.pdf", sep=""), width=6, height=4)
 ggplot(pbr_temp[Type=="C1", ], aes(x=Share, fill=Status))+ theme_minimal() +
   geom_histogram(alpha=1, center=0.025, aes(y = ..density..), binwidth=0.05, col="grey30")+
-  scale_x_continuous("Expenditure Share", limits = c(0, 1)) + facet_grid(~Status)+
+  scale_x_continuous("Expenditure Share of the Most Purchased Brand", limits = c(0, 1)) + 
+  facet_grid(~Status) + geom_vline(aes(xintercept = cmed), col="red")+
   scale_fill_manual(values=c("skyblue", "hotpink"), guide=F)
 dev.off()
 
 pdf(file=paste(graph_dir, "/figs/HMS-C2-BAdoption.pdf", sep=""), width=6, height=4)
 ggplot(pbr_temp[Type=="C2", ], aes(x=Share, fill=Status))+ theme_minimal() +
   geom_histogram(alpha=1, center=0.025, aes(y = ..density..), binwidth=0.05, col="grey30")+
-  scale_x_continuous("Expenditure Share", limits = c(0, 1)) + facet_grid(~Status)+
+  scale_x_continuous("Expenditure Share of the Top Two Purchased Brands", limits = c(0, 1)) +
+  facet_grid(~Status) + geom_vline(aes(xintercept = cmed), col="red")+
   scale_fill_manual(values=c("skyblue", "hotpink"), guide=F)
 dev.off()
 
 pdf(file=paste(graph_dir, "/figs/HMS-C3-BAdoption.pdf", sep=""), width=6, height=4)
 ggplot(pbr_temp[Type=="C3", ], aes(x=Share, fill=Status))+ theme_minimal() +
   geom_histogram(alpha=1, center=0.025, aes(y = ..density..), binwidth=0.05, col="grey30")+
-  scale_x_continuous("Expenditure Share", limits = c(0, 1)) + facet_grid(~Status, scales = "free")+
+  scale_x_continuous("Expenditure Share of the Top Three Purchased Brands", limits = c(0, 1)) + 
+  facet_grid(~Status)+ geom_vline(aes(xintercept = cmed), col="red")+
   scale_fill_manual(values=c("skyblue", "hotpink"), guide=F)
 dev.off()
 rm(pbr_temp)
@@ -250,7 +254,7 @@ treat_ctrl=treat_ctrl[, .(topb=sum(ind1),
                       by = c("household_code", "treat", "after")]
 treat_ctrl[, `:=`(treat_labels = factor(ifelse(treat==0, "Reference Group", "Adoption Group"),
                                     levels = c("Reference Group", "Adoption Group")),
-                  bafter = ifelse(after==0, "Years 2008 and 2009", "Years 2012 and 2013"))]
+                  bafter = ifelse(after==0, "Years 2008 and 2009, Before Adoption", "Years 2012 and 2013, After Adoption"))]
 
 # HHI Before Adoption 
 pdf(file=paste(graph_dir, "/figs/HMS-HHI-Before-Treat.pdf", sep=""), width=8, height=5)
@@ -274,31 +278,45 @@ ggplot(treat_ctrl, aes(x=hhi))+theme_minimal()+
 dev.off()
 
 # Spending Before Adoption 
-pdf(file=paste(graph_dir, "/figs/HMS-Spending-Before-Treat.pdf", sep=""), width=8, height=5)
-ggplot(treat_ctrl[after==0 & annual_spent<=500, ], aes(x=annual_spent))+theme_minimal()+
-  geom_histogram(alpha=1, center=10, aes(y = ..density..), binwidth=20, col="grey30", fill="skyblue")+
-  scale_x_continuous("Annual Spending", limits = c(0, 500)) + facet_wrap(~ treat_labels)
+treat_ctrl[annual_spent<=500, med:=median(annual_spent), by = c("treat", "after")]
+pdf(file=paste(graph_dir, "/figs/HMS-Spending-Before-Treat.pdf", sep=""), width=6, height=4)
+ggplot(treat_ctrl[after==0 & annual_spent<=500, ], aes(x=annual_spent, fill = factor(treat)))+
+  geom_histogram(alpha=1, center=-10, aes(y = ..density..), binwidth=20, col="grey30")+
+  geom_vline(aes(xintercept = med), col="red")+theme_minimal()+
+  scale_x_continuous("Annual Spending", limits = c(0, 500)) + facet_wrap(~ treat_labels)+
+  scale_fill_manual(values=c("skyblue", "hotpink"), guide=F)
 dev.off()
 
 # Spending After Adoption 
-pdf(file=paste(graph_dir, "/figs/HMS-Spending-After-Treat.pdf", sep=""), width=8, height=5)
-ggplot(treat_ctrl[after==1 & annual_spent<=500, ], aes(x=annual_spent))+theme_minimal()+
-  geom_histogram(alpha=1, center=10, aes(y = ..density..), binwidth=20, col="grey30", fill="skyblue")+
-  scale_x_continuous("Annual Spending", limits = c(0, 500)) + facet_wrap(~ treat_labels)
+pdf(file=paste(graph_dir, "/figs/HMS-Spending-After-Treat.pdf", sep=""), width=6, height=4)
+ggplot(treat_ctrl[after==1 & annual_spent<=500, ], aes(x=annual_spent, fill = factor(treat)))+
+  geom_histogram(alpha=1, center=-10, aes(y = ..density..), binwidth=20, col="grey30")+
+  geom_vline(aes(xintercept = med), col="red")+theme_minimal()+
+  scale_x_continuous("Annual Spending", limits = c(0, 500)) + facet_wrap(~ treat_labels)+
+  scale_fill_manual(values=c("skyblue", "hotpink"), guide=F)
 dev.off()
 
 # Spending B/After Adoption 
-pdf(file=paste(graph_dir, "/figs/HMS-Spending-BAfter.pdf", sep=""), width=8, height=5)
-ggplot(treat_ctrl[treat==1 & annual_spent<=500, ], aes(x=annual_spent))+theme_minimal()+
-  geom_histogram(alpha=1, center=10, aes(y = ..density..), binwidth=20, col="grey30", fill="skyblue")+
-  scale_x_continuous("Annual Spending", limits = c(0, 500)) + facet_wrap(~ bafter)
+pdf(file=paste(graph_dir, "/figs/HMS-Spending-BAfter.pdf", sep=""), width=6, height=4)
+ggplot(treat_ctrl[treat==1 & annual_spent<=500, ], aes(x=annual_spent, fill = factor(after)))+
+  geom_histogram(alpha=1, center=-10, aes(y = ..density..), binwidth=20, col="grey30")+
+  geom_vline(aes(xintercept = med), col="red")+theme_minimal()+
+  scale_x_continuous("Annual Spending", limits = c(0, 500)) + facet_wrap(~ treat_labels)+
+  scale_fill_manual(values=c("skyblue", "hotpink"), guide=F)
 dev.off()
 
-# Spending After Adoption 
-treat_ctrl[annual_spent<=500, med:=median(annual_spent), by = c("treat", "after")]
-pdf(file=paste(graph_dir, "/figs/HMS-Spending-Panel.pdf", sep=""), width=6, height=4)
+# Spending panel 
+pdf(file=paste(graph_dir, "/figs/HMS-Spending-Panel-Before.pdf", sep=""), width=3.375, height=4.5)
+ggplot(treat_ctrl[annual_spent<=500 & after==0, ], aes(x = annual_spent, fill = factor(interaction(treat, after)))) + 
+  geom_histogram(alpha=1, center=10, aes(y = ..density..), binwidth=20, col="grey30")+
+  scale_x_continuous("Annual Spending", limits = c(0, 500)) + geom_vline(aes(xintercept = med), col="red")+
+  theme_minimal() + facet_grid(treat_labels ~ bafter) + 
+  scale_fill_manual(values=c("skyblue", "skyblue", "hotpink", "hotpink"), guide=F)
+dev.off()
+
+pdf(file=paste(graph_dir, "/figs/HMS-Spending-Panel.pdf", sep=""), width=6.75, height=4.5)
 ggplot(treat_ctrl[annual_spent<=500, ], aes(x = annual_spent, fill = factor(interaction(treat, after)))) + 
-  geom_histogram(alpha=1, center=10, aes(y = ..density..), binwidth=30, col="grey30")+
+  geom_histogram(alpha=1, center=10, aes(y = ..density..), binwidth=20, col="grey30")+
   scale_x_continuous("Annual Spending", limits = c(0, 500)) + geom_vline(aes(xintercept = med), col="red")+
   theme_minimal() + facet_grid(treat_labels ~ bafter) + 
   scale_fill_manual(values=c("skyblue", "skyblue", "hotpink", "hotpink"), guide=F)

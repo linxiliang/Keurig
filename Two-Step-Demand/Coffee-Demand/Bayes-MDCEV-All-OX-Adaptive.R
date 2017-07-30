@@ -87,16 +87,16 @@ machineAddresses <- list(
        ncore=32)
 )
 
-primary <- 'bushgcn30'
+primary <- 'bushgcn10'
 machineAddresses <- list(
   list(host=primary, user='xlin0',
-       ncore=28),
-  list(host='bushgcn31',user='xlin0',
-       ncore=28),
-  list(host='bushgcn32',user='xlin0',
-       ncore=28),
-  list(host='bushgcn33',user='xlin0',
-       ncore=28)
+       ncore=24),
+  list(host='bushgcn11',user='xlin0',
+       ncore=24),
+  list(host='bushgcn12',user='xlin0',
+       ncore=24),
+  list(host='bushgcn13',user='xlin0',
+       ncore=24)
   )
 
 spec <- lapply(machineAddresses,

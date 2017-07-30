@@ -3,7 +3,7 @@
 # Jan 2017
 
 # Setting for parallel computation
-test_run = true;
+test_run = false;
 remote = false;
 if remote
   addprocs(10, restrict=false)
@@ -186,8 +186,7 @@ while (err > tol)
     EW1 = thtild[1,:] + thtild[2, :] .* xtild[1, :] + EW1x
 
     # Compute the Bellman
-    EWmax = maximum(vcat(EW1x, β*wnext))
-    wgrid = exp(thtild[3,:]).*log(exp(β*wnext./exp(thtild[3,:])).+exp(EW1./exp(thtild[3,:])))
+    wgrid = (thtild[3,:].^2).*log(exp(β*wnext./(thtild[3,:].^2)).+exp(EW1./(thtild[3,:].^2)))
     err = sum(abs(wgrid-wtild))
     wtild[:] = wgrid
     println("Error is $(err), and interation is $(nx)")

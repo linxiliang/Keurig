@@ -51,7 +51,6 @@
      end
  end
 
-
  function WApprox(θ1::Vector, θ0::Matrix, H::Matrix, s1::Vector, s0::Matrix, sH::Matrix, wvec::Vector)
      cdist = MvNormal(θ1, H)
      wts0 = pdf(cdist, θ0)
@@ -63,7 +62,7 @@
  end
 
  function W0V(θ1::Vector, x::Vector, w::Float64)
-     return (θ1[3])^2 * log(exp(β*w/exp(θ1[3])) + exp((θ1[1] + θ1[2] * x[1] + coefun(W1coef, x[3]))/(θ1[3])^2))
+     return (θ1[3])^2 * log(exp(β*w/(θ1[3]^2)) + exp((θ1[1] + θ1[2] * x[1] + coefun(W1coef, x[3]))/(θ1[3]^2)))
  end
 
  # Compute the value of holding the machine for given state

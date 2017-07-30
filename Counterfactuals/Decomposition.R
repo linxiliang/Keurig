@@ -222,8 +222,9 @@ OnlyBestMatch<-function(i, n=1000){
 # Run the codes
 invisible(clusterEvalQ(cl, load('Data/Machine-Adoption/MU-Diff-Asist.RData')))
 clusterExport(cl, c('NoQualityImprove', 'NoBestMatch', 'OnlyBestMatch'))
-cval_NoQ = parLapply(cl, hh_codes, NoQualityImprove, n=100)
+# cval_NoQ = parLapply(cl, hh_codes, NoQualityImprove, n=100)
 cval_NoB = parLapply(cl, hh_codes, NoBestMatch, n=100)
+stopxxx
 cval_OnB = parLapply(cl, hh_codes, OnlyBestMatch, n=100)
 save(cval_NoQ, file = paste0(output_dir, "/Delta-NoQualityImprovement-300.RData"))
 save(cval_NoB, file = paste0(output_dir, "/Delta-NoBestMatch-300.RData"))

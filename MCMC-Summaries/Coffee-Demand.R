@@ -27,7 +27,7 @@ graph_dir = "Tabfigs/MCMC-Summaries"
 load(paste(meta_dir, "HH.RData", sep=""))
 #----------------------------------------------------------------------------------------------------#
 # Load Estimation Results
-load(paste(input_dir, "/MDCEV-MCMC-OX-All2.RData", sep=""))
+load(paste(input_dir, "/MDCEV-MCMC-OX-All.RData", sep=""))
 
 # Burnin
 burnin = 6400
