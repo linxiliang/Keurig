@@ -64,7 +64,7 @@ invisible(clusterEvalQ(cl, Rcpp::sourceCpp('Scripts/Two-Step-Demand/Machine-Adop
 
 #---------------------------------------------------------------------------------------------------#
 # Load Datasets
-load("Data/Machine-Adoption/MU-Diff-Asist.RData")
+load("Data/Machine-Adoption/MU-Diff-Asist-NoAdjust.RData")
 if (cond){
   hh_adpt_list = hh_panel[adoption==1, unique(household_code)]
   hh_demo = hh_demo[household_code%in%hh_adpt_list, ]
@@ -88,9 +88,9 @@ bgen_ind = c(1, 3, 4, 6, 7, 11)
 bindx = sort(c(bgen_ind, bspec_ind))
 
 xvars = c(paste0("a", 2:16), "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
-          "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", "nbrand")
+          "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag")
 xnames = c("0NOTHING", brands, "keurig", "flavored", "lightR", "medDR", "darkR", "assorted",
-           "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag", "nbrand")
+           "kona", "colombian", "sumatra", "wb", "brand_lag_keurig", "brand_lag")
 clusterExport(cl, c('brands', 'anames', 'k_specific', 'bspec_ind', 'bgen_ind', 'bindx', 'xvars', 'pref'))
 
 NoQualityImprove<-function(i, n=1000){
@@ -112,11 +112,11 @@ NoQualityImprove<-function(i, n=1000){
   i_pref = pref[as.character(i), ]
   i_pref[16] = ifelse(i_pref[16]<=0, i_pref[16], 0)
   # Compute the quality of product
-  hh_retailers_temp[, zb := xmat %*% i_pref[1:28]]
+  hh_retailers_temp[, zb := xmat %*% i_pref[1:27]]
   # Compute the alpha of the product
-  hh_retailers_temp[, alpha := kmat %*% i_pref[29:30]]
+  hh_retailers_temp[, alpha := kmat %*% i_pref[28:29]]
   # Compute the rho
-  hh_retailers_temp[, rho := i_pref[31]]
+  hh_retailers_temp[, rho := i_pref[30]]
   
   # Number of retailer and week pair 
   setkey(hh_retailers_temp, household_code, retailer_code, week_end)
@@ -161,11 +161,11 @@ NoBestMatch<-function(i, n=1000){
   xmat = cbind(xmat, hh_retailers_temp$badjust)
   
   # Compute the quality of product
-  hh_retailers_temp[, zb := xmat %*% c(i_pref[1:28], 1)]
+  hh_retailers_temp[, zb := xmat %*% c(i_pref[1:27], 1)]
   # Compute the alpha of the product
-  hh_retailers_temp[, alpha := kmat %*% i_pref[29:30]]
+  hh_retailers_temp[, alpha := kmat %*% i_pref[28:29]]
   # Compute the rho
-  hh_retailers_temp[, rho := i_pref[31]]
+  hh_retailers_temp[, rho := i_pref[30]]
   
   # Number of retailer and week pair 
   setkey(hh_retailers_temp, household_code, retailer_code, week_end)
@@ -207,11 +207,11 @@ OnlyBestMatch<-function(i, n=1000){
   kmat = as.matrix(hh_retailers_temp[, cbind(1-keurig, keurig)])
   
   # Compute the quality of product
-  hh_retailers_temp[, zb := xmat %*% i_pref[1:28]]
+  hh_retailers_temp[, zb := xmat %*% i_pref[1:27]]
   # Compute the alpha of the product
-  hh_retailers_temp[, alpha := kmat %*% i_pref[29:30]]
+  hh_retailers_temp[, alpha := kmat %*% i_pref[28:29]]
   # Compute the rho
-  hh_retailers_temp[, rho := i_pref[31]]
+  hh_retailers_temp[, rho := i_pref[30]]
   
   # Number of retailer and week pair 
   setkey(hh_retailers_temp, household_code, retailer_code, week_end)
@@ -226,21 +226,20 @@ OnlyBestMatch<-function(i, n=1000){
 }
 
 # Run the codes
-invisible(clusterEvalQ(cl, load('Data/Machine-Adoption/MU-Diff-Asist.RData')))
+invisible(clusterEvalQ(cl, load('Data/Machine-Adoption/MU-Diff-Asist-NoAdjust.RData')))
 clusterExport(cl, c('NoQualityImprove', 'NoBestMatch', 'OnlyBestMatch'))
-cval_NoQ = parLapply(cl, hh_codes, NoQualityImprove, n=300)
-save(cval_NoQ, file = paste0(output_dir, "/Delta-NoQualityImprovement-300-Week.RData"))
+cval_NoQ = parLapply(cl, hh_codes, NoQualityImprove, n=100)
+save(cval_NoQ, file = paste0(output_dir, "/Delta-NoQualityImprovement-NoAdjust-100-Week.RData"))
 
-cval_NoB = parLapply(cl, hh_codes, NoBestMatch, n=300)
-save(cval_NoB, file = paste0(output_dir, "/Delta-NoBestMatch-300-Week.RData"))
+cval_NoB = parLapply(cl, hh_codes, NoBestMatch, n=100)
+save(cval_NoB, file = paste0(output_dir, "/Delta-NoBestMatch-NoAdjust-100-Week.RData"))
 
-cval_OnB = parLapply(cl, hh_codes, OnlyBestMatch, n=300)
-save(cval_OnB, file = paste0(output_dir, "/Delta-OnlyBestMatch-300-Week.RData"))
+cval_OnB = parLapply(cl, hh_codes, OnlyBestMatch, n=100)
+save(cval_OnB, file = paste0(output_dir, "/Delta-OnlyBestMatch-NoAdjust-100-Week.RData"))
 
-load(paste0(output_dir, "/Delta-NoQualityImprovement-300.RData"))
-load(paste0(output_dir, "/Delta-NoBestMatch-100-Week.RData"))
-load(paste0(output_dir, "/Delta-OnlyBestMatch-100-Week.RData"))
-load(paste0(output_dir, "/HH-Choice-Value.RData"))
+load(paste0(output_dir, "/Delta-NoBestMatch-NoAdjust-100-Week.RData"))
+load(paste0(output_dir, "/Delta-OnlyBestMatch-NoAdjust-100-Week.RData"))
+load(paste0(output_dir, "/HH-Choice-Value-NoAdjust.RData"))
 cval_NoB = rbindlist(cval_NoB)
 cval_OnB = rbindlist(cval_OnB)
 
@@ -278,7 +277,7 @@ setkey(hw_market_panel, ntrip)
 write.csv(hw_market_panel[,.(household_code, hware, ntrip, t, price, price_avg, price_avgn,
                              mu_diff_orig, mu_diff_nob, mu_diff_onb, thanksgiving, christmas, 
                              bchristmas, achristmas, mother, father, ashare, nbrand)],
-          file = "Data/Counterfactual/HW-MU-Decomp.csv", row.names = FALSE)
+          file = "Data/Counterfactual/HW-MU-Decomp-NoAdjust.csv", row.names = FALSE)
 
 hw_market_panel[, mu_diff_orig_lag := c(NA, mu_diff_orig[1:(length(mu_diff_orig)-1)]), by = "household_code"]
 hw_market_panel[, mu_diff_nob_lag := c(NA, mu_diff_nob[1:(length(mu_diff_nob)-1)]), by = "household_code"]

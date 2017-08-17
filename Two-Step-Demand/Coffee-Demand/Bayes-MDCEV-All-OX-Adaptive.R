@@ -353,8 +353,7 @@ for (d in 1:totdraws){
 }
 
 # Save output to a dataset
-inx = seq(5001, 9000, 2)
-inx = seq(1, 10000, 4)
+inx = seq(4001, 8000, 2)
 bac_dt = invisible(clusterEvalQ(cl, ac_dt))
 bac_dt = rbindlist(bac_dt)
 setkey(bac_dt, hh)
@@ -366,7 +365,7 @@ setkey(bac_dt, hh)
 #save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, 
 #      file = paste(output_dir, "MDCEV-MCMC-O1.RData", sep = ""))
 save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, bac_dt,
-      file = paste(output_dir, "MDCEV-MCMC-OX.RData", sep = ""))
+      file = paste(output_dir, "MDCEV-MCMC-OX-NoAdjust.RData", sep = ""))
 save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, bac_dt,
      file = paste("Keurig/Data/Bayes-MCMC/MDCEV-MCMC-OX.RData", sep = ""))
 save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, bac_dt, beta0, 
@@ -375,4 +374,4 @@ save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, bac_dt, beta0,
 save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, bac_dt, beta0, 
      file = paste(output_dir, "MDCEV-MCMC-OX2.RData", sep = ""))
 save(hh_code_list, bhatd, deltad, sigd, bindv, bnames, bac_dt, beta0, 
-     file = paste(output_dir, "MDCEV-MCMC-OX-All2.RData", sep = ""))
+     file = paste(output_dir, "MDCEV-MCMC-OX-NoAdjust.RData", sep = ""))
