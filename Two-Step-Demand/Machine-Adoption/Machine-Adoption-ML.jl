@@ -12,7 +12,7 @@ if remote
   # machines = [("bushgcn11", 12), ("bushgcn12", 12)]
   addprocs(machines; tunnel=true)
 else
-  addprocs(56; restrict=false)
+  addprocs(4; restrict=false)
 end
 np = workers()
 remotecall_fetch(rand, 2, 20) # Test worker
@@ -28,13 +28,13 @@ broad_mpi(:(np = $np));
 @everywhere cd("$(homedir())/Keurig");
 
 # Computation Settings
-acadjust = false;
+acadjust = true;
 @everywhere controls = true; # Add controls such as seasonality
 @everywhere cons_av = false; # Constant adoption value
 
 # Load Packages
-using Distributions, Optim, FastGaussQuadrature, Calculus, ChebyshevApprox, StatsBase, BlackBoxOptim
-broad_mpi(:(using Distributions, Optim, FastGaussQuadrature, Calculus, ChebyshevApprox, StatsBase, BlackBoxOptim))
+using Distributions, Optim, FastGaussQuadrature, Calculus, ChebyshevApprox, StatsBase, BlackBoxOptim;
+broad_mpi(:(using Distributions, Optim, FastGaussQuadrature, Calculus, ChebyshevApprox, StatsBase, BlackBoxOptim;))
 
 # Parameter settings
 @everywhere β  = 0.995;
@@ -73,6 +73,7 @@ for i in 1:size(hh_panel, 1)
     push!(None_NA_list, i)
   end
 end
+
 hh_panel = hh_panel[None_NA_list, :];
 if test_run
   indx = sort(sample(1:3757694, 80000, replace = false))
@@ -172,9 +173,9 @@ tol = 1e-8;
 @everywhere w1_b = Array(Float64, nobs);
 @everywhere w0_b = Array(Float64, nobs);
 wgrid = zeros(Float64, n1,n2,n3)
+ExpectedW = zeros(Float64, n1,n2,n3)
 # Θ_0 = [-1000.73282815577369, 1.94909, 7.960764, 0.0001, 0.35536066706454367, -0.10823587535855583, 0.2486100147839871, 0.2248080375561089, 0.6206315818689631]
-Θ_0 = [-762.079,1.774,10.7504, 0.13671037841663608026, 0.79119170457287690823, 0.35703443779432908478, 0.42949855017590554684,
-0.01820777905828507501, -0.13282396850696606694]
+Θ_0 = [-762.079,1.774,10.7504, 0.13671037841663608026, 0.79119170457287690823, 0.35703443779432908478, 0.42949855017590554684, 0.01820777905828507501, -0.13282396850696606694]
 # Θ_0 = [-60., -7., 8.25206]
-lopt = optimize(ll!, Θ_0, NelderMead())
+# lopt = optimize(ll!, Θ_0, NelderMead())
 # bopt = bboptimize(ll!; SearchRange = [(-1200.0, 100.0), (0.01, 10.0), (7.0, 20.0)], Method = :probabilistic_descent)

@@ -31,9 +31,9 @@ function ll_fun!(Θ_a::Vector, w_tensor::Array{Float64, 3})
   w1_b[:] = (Θ_a[1] - (Θ_a[2]^2) * XMat[:,1] +  W1Vec)/(Θ_a[3]^2) + ZMat*κ;
   #w1_b[:] = (Θ_a[1] - (Θ_a[2]^2) * XMat[:,1] +  W1Vec)/(Θ_a[3]^2) + ZMat*[0.13671037841663608026, 0.79119170457287690823, 0.35703443779432908478, 0.42949855017590554684, 0.01820777905828507501, -0.13282396850696606694];
   for h in 1:nobs
-    w0_b[h] = β*hermiteint2d(w_tensor, [SMat[1,h], SMat[3,h]], sigma, SMat[2,h]);
+    w0_b[h] = chebyshev_evaluate(w_tensor, XMat[h,:], order_tensor, range);
   end
-  pvec = exp(w1_b)./(exp(w0_b/(Θ_a[3]^2))+exp(w1_b));
+  pvec = exp(w1_b)./(exp(w0_b)+exp(w1_b));
 
   # Compute likelihood for old and new
   ll = -sum(log(pvec).*purch_vec + log(1-pvec).*(1-purch_vec));
@@ -56,24 +56,34 @@ function ll!(Θ_a::Vector)
       broad_mpi(:(w_tensor = $w_tensor))
       @sync begin
         @parallel for (i,j,k) in mgrid
-        pbar_n2 =  ω * nodes_1[i] + (1-ω) * nodes_2[j];
-        mu = [ρ0 + ρ1 * pbar_n2, α0 + α1 * nodes_3[k]];
-        EW_v0 = β * hermiteint2d(w_tensor, mu, sigma, pbar_n2)/(Θ_a[3]^2);
-        EW_v1 = (Θ_a[1] - (Θ_a[2]^2) * nodes_1[i] + EW1x[k])/(Θ_a[3]^2);
-        wgrid_new[i, j, k] = Θ_a[3]^2 * log(exp(EW_v0) + exp(EW_v1))
-        # wgrid_new[i, j, k] = Θ_a[3]^2 * log(exp(β*EW_v/(Θ_a[3]^2)) + exp((Θ_a[1] + Θ_a[2] * nodes_1[i] + EW1x[k])/(Θ_a[3]^2)))
+          pbar_n2 =  ω * nodes_1[i] + (1-ω) * nodes_2[j];
+          mu = [ρ0 + ρ1 * pbar_n2, α0 + α1 * nodes_3[k]];
+          EW_v0 = β * hermiteint2d(w_tensor, mu, sigma, pbar_n2)/(Θ_a[3]^2);
+          EW_v1 = (Θ_a[1] - (Θ_a[2]^2) * nodes_1[i] + EW1x[k])/(Θ_a[3]^2);
+          wgrid_new[i, j, k] = Θ_a[3]^2 * log(exp(EW_v0) + exp(EW_v1))
+          # wgrid_new[i, j, k] = Θ_a[3]^2 * log(exp(β*EW_v/(Θ_a[3]^2)) + exp((Θ_a[1] + Θ_a[2] * nodes_1[i] + EW1x[k])/(Θ_a[3]^2)))
        end
       end
       err = sum(abs(wgrid_new-wgrid))
       #println("error is $(err) with nx $(nx)")
       wgrid[:,:,:] = wgrid_new;
   end
+  w_tensor = chebyshev_weights(wgrid, nodes_1, nodes_2, nodes_3, order_tensor, range);
+
+ # Directly approximate the expected value of the next period W.
+  for (i,j,k) in mgrid
+    pbar_n2 =  ω * nodes_1[i] + (1-ω) * nodes_2[j];
+    mu = [ρ0 + ρ1 * pbar_n2, α0 + α1 * nodes_3[k]];
+    ExpectedW[i, j, k] = β * hermiteint2d(w_tensor, mu, sigma, pbar_n2)/(Θ_a[3]^2);
+  end
+
+  w_tensor = chebyshev_weights(ExpectedW, nodes_1, nodes_2, nodes_3, order_tensor, range);
+  broad_mpi(:(w_tensor = $w_tensor))
+
   if isnan(err)
     println("The parameter vector is not feasible")
     return 1.0e9
   end
-  w_tensor = chebyshev_weights(wgrid, nodes_1, nodes_2, nodes_3, order_tensor, range);
-  broad_mpi(:(w_tensor = $w_tensor))
   @sync begin
       for p in np
           @async llvec[p-1] = fetch(@spawnat p eval(:(ll_fun!(Θ_a, w_tensor))))
