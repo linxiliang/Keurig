@@ -232,6 +232,11 @@ move = move[brand_descr=="KEURIG", ]
 move = move[!is.na(series)]
 setnames(move, "imputed_price", "price")
 
+# Filter out small retailers 
+move[, tunits := sum(units), by = "retailer_code"]
+move = move[tunits>=500, ]
+move[, tunits:=NULL]
+
 # Obtain the list of retailers, stores, by week - to be used to understand variety in selection.
 store_first_last_week= move[, .(first_week_observed = min(week_end), last_week_end = max(week_end)), 
                             by = c("store_code_uc")]
@@ -271,7 +276,8 @@ nstore_panel = store_exists_panel[, .(tot_stores = .N), by = c("retailer_code", 
 setkey(rms_hw_prices, retailer_code, week_end)
 setkey(nstore_panel, retailer_code, week_end)
 rms_hw_prices = rms_hw_prices[nstore_panel[, .(retailer_code, week_end, tot_stores)], nomatch=0L]
-rms_hw_prices = rms_hw_prices[nstores/tot_stores>=0.15 & tot_stores>=5, ]
+# rms_hw_prices = rms_hw_prices[nstores/tot_stores>=0.15 & tot_stores>=5, ]
+rms_hw_prices = rms_hw_prices[tot_stores>=5, ]
 
 # Get rid of retailers with less than a year of data (52 Weeks).
 rms_hw_prices[, nweek:=.N, by = "retailer_code"]
@@ -419,7 +425,7 @@ save(hw_prices, file = paste(output_dir, "/HW-Prices.RData", sep=""))
 # Check price -- whether my hardware price imputation is good
 setkey(hw_prices, retailer_code, series, week_end)
 setkey(purchases, retailer_code, series, week_end)
-pcheck = purchases[hw_prices[,.(retailer_code, series, week_end, price, price_regular)], nomatch=0L]
+pcheck = purchases[hw_prices[,.(retailer_code, series, week_end, price, price_regular, in_rms)], nomatch=0L]
 pcheck[series==4, cor(price, i.price)]
 # ----------------------------------------------------------------------------------------------------#
 
@@ -469,15 +475,53 @@ setnames(hh_list, "panel_year", "adoption_panel_year")
 setkey(hw_prices, series)
 setkey(series_sales, series)
 hw_p_retailer = hw_prices[series_sales, nomatch=0L]
-hw_p_retailer = hw_p_retailer[series==3 | series==4 | series==5, ]
-hw_p_retailer[series==4, `:=`(price = price-30)]
-hw_p_retailer[series==5, `:=`(price = price-60)]
-hw_p_retailer[series==4, `:=`(price_regular = price_regular-30)]
-hw_p_retailer[series==5, `:=`(price_regular = price_regular-60)]
-hw_p_retailer = hw_p_retailer[, .(price = (price * np)/sum(np),
-                                  price_regular = (price_regular * np)/sum(np)), 
-                              by = c("retailer_code", "week_end")]
+hw_p_retailer = hw_p_retailer[series==2 | series==3 | series==4 | series==5, ]
+# Create one price index
+hw_p_wide = hw_p_retailer[, .(price_s2 = sum(price_regular*(series==2))/sum(series==2),
+                              price_s3 = sum(price_regular*(series==3))/sum(series==3),
+                              price_s4 = sum(price_regular*(series==4))/sum(series==4),
+                              price_s5 = sum(price_regular*(series==5))/sum(series==5)), 
+                          by = c("retailer_code", "week_end")]
+# lreg_42 = hw_p_wide[price_s2!=0 & price_s4!=0, lm(price_s4~price_s2)]
+# hw_p_retailer[series==2, s2_adjust := predict(lreg_42, data.frame(price_s2=price_regular)) - price_regular]
+# lreg_43 = hw_p_wide[price_s3!=0 & price_s4!=0, lm(price_s4~price_s3)]
+# hw_p_retailer[series==3, s3_adjust := predict(lreg_43, data.frame(price_s3=price_regular)) - price_regular]
+# lreg_45 = hw_p_wide[price_s5!=0 & price_s4!=0, lm(price_s4~price_s5)]
+# hw_p_retailer[series==5, s5_adjust := predict(lreg_45, data.frame(price_s5=price_regular)) - price_regular]
 
+# lreg_42 = hw_p_wide[price_s2!=0 & price_s4!=0, lm(log(price_s4)~log(price_s2))]
+# hw_p_retailer[series==2, s2_adjust := exp(predict(lreg_42, data.frame(price_s2=price_regular))) - price_regular]
+# lreg_43 = hw_p_wide[price_s3!=0 & price_s4!=0, lm(log(price_s4)~log(price_s3))]
+# hw_p_retailer[series==3, s3_adjust := exp(predict(lreg_43, data.frame(price_s3=price_regular))) - price_regular]
+# lreg_45 = hw_p_wide[price_s5!=0 & price_s4!=0, lm(log(price_s4)~log(price_s5))]
+# hw_p_retailer[series==5, s5_adjust := exp(predict(lreg_45, data.frame(price_s5=price_regular))) - price_regular]
+hw_p_retailer[series==2, `:=`(s2_adjust = 50)]
+hw_p_retailer[series==3, `:=`(s3_adjust = 40)]
+hw_p_retailer[series==5, `:=`(s5_adjust = - 36)]
+
+hw_p_retailer[series==2, `:=`(price = price+s2_adjust)]
+hw_p_retailer[series==3, `:=`(price = price+s3_adjust)]
+hw_p_retailer[series==5, `:=`(price = price+s5_adjust)]
+hw_p_retailer[series==2, `:=`(price_regular = price_regular + s2_adjust)]
+hw_p_retailer[series==3, `:=`(price_regular = price_regular + s3_adjust)]
+hw_p_retailer[series==5, `:=`(price_regular = price_regular + s5_adjust)]
+setnames(hw_p_retailer, "price", "imputed_price")
+
+setkey(hw_p_retailer, retailer_code, series, week_end)
+setkey(purchases, retailer_code, series, week_end)
+purchases = hw_p_retailer[,.(retailer_code, series, week_end, imputed_price, price_regular, 
+                             s2_adjust, s3_adjust, s5_adjust)][purchases]
+purchases[series==2 & !is.na(s2_adjust), `:=`(price_paid = price_paid+s2_adjust)]
+purchases[series==3 & !is.na(s3_adjust), `:=`(price_paid = price_paid+s3_adjust)]
+purchases[series==5 & !is.na(s5_adjust), `:=`(price_paid = price_paid+s5_adjust)]
+purchases[is.na(s2_adjust) & series==2, `:=`(price_paid = price_paid + 50)]
+purchases[is.na(s3_adjust) & series==3, `:=`(price_paid = price_paid + 40)]
+purchases[is.na(s5_adjust) & series==5, `:=`(price_paid = price_paid - 36)]
+purchases[, `:=`(imputed_price = NULL, price_regular = NULL, 
+                 s2_adjust = NULL, s3_adjust = NULL, s5_adjust=NULL)]
+hw_p_retailer = hw_p_retailer[, .(imputed_price = sum(imputed_price*np)/sum(np), 
+                                  price_regular = sum(price_regular*np)/sum(np)), 
+                              by = c("retailer_code", "week_end")]
 # -----------------------------------------------------------------------------------------------#
 # For price checking later.
 purchases[, warehouse := NULL]
@@ -488,7 +532,7 @@ setkey(hh_ware_status, household_code, panel_year)
 purchases = purchases[hh_ware_status, nomatch=0L]
 
 # Average purchases 
-retailer_share = purchases[series==3|series==4|series==5, .(np = .N), 
+retailer_share = purchases[series==2|series==3|series==4|series==5, .(np = .N), 
                            by = c("retailer_code", "panel_year")]
 hh_retailer_trips=trips[, .(ntrips = .N), by = c("household_code", "dma_code", 
                                                  "retailer_code", "panel_year")]
@@ -501,40 +545,29 @@ retailer_share = hh_retailer_trips[retailer_share, nomatch = 0L]
 retailer_share[, nweight := (np*ntrips)/10000]
 
 # Merge in price
-hw_prices[, `:=`(panel_year = year(week_end),
+hw_p_retailer[, `:=`(panel_year = year(week_end),
                  quarter = paste(format(week_end, "%y/"), 0, 
                                  sub( "Q", "", quarters(week_end)), sep = ""))]
 setkey(retailer_share, retailer_code, panel_year)
-setkey(hw_prices, retailer_code, panel_year)
-hw_p_index = hw_prices[retailer_share, nomatch=0L, allow.cartesian=TRUE]
-hw_p_index = hw_p_index[series==3 | series==4 | series==5, ]
-hw_p_index[series==3, `:=`(price = price + 30, price_regular = price_regular+30)]
-hw_p_index[series==5, `:=`(price = price - 30, price_regular = price_regular-30)]
+setkey(hw_p_retailer, retailer_code, panel_year)
+hw_p_index = hw_p_retailer[retailer_share, nomatch=0L, allow.cartesian=TRUE]
 hw_p_index0 = hw_p_index[!(retailer_code %in% warehouse_retailers),
-                         .(price=sum(price*nweight)/sum(nweight),
+                         .(imputed_price=sum(imputed_price*nweight)/sum(nweight),
                            price_regular=sum(price_regular*nweight)/sum(nweight),
                            warehouse=0), 
-                         by = c("household_code", "series", "dma_code", "week_end")]
-hw_p_index1 = hw_p_index[,.(price=sum(price*nweight)/sum(nweight),
+                         by = c("household_code", "dma_code", "week_end")]
+hw_p_index1 = hw_p_index[,.(imputed_price=sum(imputed_price*nweight)/sum(nweight),
                             price_regular=sum(price_regular*nweight)/sum(nweight),
                             warehouse=1), 
-                         by = c("household_code", "series", "dma_code", "week_end")]
+                         by = c("household_code", "dma_code", "week_end")]
 hw_p_index = rbindlist(list(hw_p_index0, hw_p_index1))
 rm(hw_p_index0, hw_p_index1)
 
 # Obtain the series weight
-setkey(series_sales, series)
-setkey(hw_p_index, series)
-hw_p_index = hw_p_index[series_sales, nomatch=0L]
-
-# Obtain the overall price environment
-hw_p_index = hw_p_index[, .(price = sum(price*np)/sum(np), 
-                            price_regular = sum(price_regular*np)/sum(np)), 
-                        by = c("household_code", "dma_code", "warehouse", "week_end")]
 setkey(hw_p_index, household_code, dma_code, warehouse, week_end)
 
 # Drop Missing Observations
-hw_p_index = hw_p_index[!is.na(price), ]
+hw_p_index = hw_p_index[!is.na(imputed_price), ]
 
 # Select household base on actual status 
 hw_p_index[, panel_year := year(week_end)]
@@ -550,12 +583,20 @@ hw_p_index = hw_p_index[week_end>=cut_week, ]
 # Check how good the price variation is in the real data!
 setkey(hw_p_index, household_code, dma_code, warehouse, week_end)
 setkey(purchases, household_code, dma_code, warehouse, week_end)
-price_check = purchases[hw_p_index[, .(household_code, dma_code, warehouse, week_end, price)], nomatch=0L]
-price_check[series==3, cor(price, i.price, use = "pairwise.complete.obs")]
-price_check[series==4, cor(price, i.price, use = "pairwise.complete.obs")]
-price_check[series==5, cor(price, i.price, use = "pairwise.complete.obs")]
+price_check = purchases[hw_p_index[, .(household_code, dma_code, warehouse, week_end, 
+                                       imputed_price, price_regular)], nomatch=0L]
+price_check[series==2, cor(price_paid, imputed_price, use = "pairwise.complete.obs")]
+price_check[series==3, cor(price_paid, imputed_price, use = "pairwise.complete.obs")]
+price_check[series==4, cor(price_paid, imputed_price, use = "pairwise.complete.obs")]
+price_check[series==5, cor(price_paid, imputed_price, use = "pairwise.complete.obs")]
+hw_p_index = purchases[, .(household_code, dma_code, warehouse, week_end, price_paid)][hw_p_index]
+hw_p_index[, price := ifelse(is.na(price_paid), imputed_price, price_paid)]
+hw_p_index[, n_i:=1:.N, by = c("household_code", "week_end")]
+hw_p_index = hw_p_index[n_i==1, ]
+hw_p_index[, `:=`(n_i = NULL)]
 
 # Create price lags
+setkey(hw_p_index, household_code, week_end)
 hw_p_index[,`:=`(price_lag = c(NA, price[1:(length(price)-1)]), 
                  price_reg_lag = c(NA, price_regular[1:(length(price_regular)-1)])), 
            by = c("household_code")]
@@ -564,7 +605,7 @@ hw_p_index[,`:=`(price_lag = c(NA, price[1:(length(price)-1)]),
 fitw <- function(w){
   pr = exp(w)/(1+exp(w))
   hw_p_index[, price_avg:=mavg(price, pr), by = c("household_code")]
-  preg = hw_p_index[, lm(price~price_avg)]
+  preg = hw_p_index[, lm(log(price)~log(price_avg))]
   return(sum(residuals(preg)^2))
 }
 
@@ -573,7 +614,7 @@ w = popt$par
 pr = exp(w)/(1+exp(w))
 hw_p_index[, price_avg:=mavg(price, pr), by = c("household_code")]
 hw_p_index[, price_avgn:=mavgn(price, pr), by = c("household_code")]
-preg = hw_p_index[, lm(price~price_avg)]
+preg = hw_p_index[, lm(log(price)~log(price_avg))]
 
 # Regress price on price moving averages.
 summary(preg)
@@ -614,7 +655,8 @@ save(hw_panel, file = paste(output_dir, "/HW-Full-Panel.RData", sep=""))
 # Flag Adoption date
 hw_panel = hw_panel[wfilter==1, ]
 hw_panel[!is.na(imputed_hfirst), purchased:=as.integer(t==max(t)), by = c("household_code")]
-hw_panel[is.na(purchased), purchased:=0]
+# hw_panel[!is.na(imputed_hfirst), purchased:=as.integer(week_end==imputed_hfirst_week), by = c("household_code")]
+hw_panel[is.na(imputed_hfirst), purchased:=0]
 hw_panel[, `:=`(wfilter=NULL)]
 
 # Setkey and save the data

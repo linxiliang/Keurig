@@ -44,20 +44,21 @@ if acadjust
   @everywhere α1 = 0.91602396;
   @everywhere σ0 = 0.5124003;
 else
-  @everywhere α0 = 0.104699;
-  @everywhere α1 = 0.91714777;
-  @everywhere σ0 = 0.4272539;
+  @everywhere α0 = 0.02552319;
+  @everywhere α1 = 0.96285965;
+  @everywhere σ0 = 0.1081999;
 end
 
 # Reference Price: p_ref' = ω⋅price + (1-ω)⋅p_ref
-@everywhere ω = 0.2816747
+@everywhere ω = 0.2939151
 # Price: price' = ρ0 + ρ1⋅price + ɛ, ɛ~N(0,σ1^2)
-@everywhere ρ0 = 7.1280045
-@everywhere ρ1 = 0.9504942
-@everywhere σ1 = 6.593
+@everywhere ρ0 = 0.3427638
+@everywhere ρ1 = 0.93099801
+#@everywhere ρ2 = 0.00025473
+@everywhere σ1 = 0.04110696
 
 # Load all function
-@everywhere include("$(homedir())/Keurig/Scripts/Two-Step-Demand/Machine-Adoption/functions-ML.jl")
+@everywhere include("$(homedir())/Keurig/Scripts/Two-Step-Demand/Machine-Adoption/functions-ML-LN.jl")
 
 # Read estimation data
 if acadjust
@@ -99,7 +100,8 @@ end
 # @everywhere ZMat = hh_panel[:, 10:15]
 @everywhere ZMat = sparse(convert(Array{Float64}, ZMat))
 @everywhere pbar_n2 =  ω * XMat[:,1] + (1-ω) * XMat[:,2];
-@everywhere SMat = transpose(hcat(ρ0 + ρ1 * pbar_n2, pbar_n2, α0 + α1 * XMat[:,3]))
+# @everywhere SMat = transpose(hcat(ρ0 + ρ1 * log(pbar_n2) + ρ2 * log(XMat[:,3].+1), pbar_n2, α0 + α1 * log(XMat[:,3].+1)))
+@everywhere SMat = transpose(hcat(ρ0 + ρ1 * log(pbar_n2), pbar_n2, α0 + α1 * log(XMat[:,3].+1)))
 @everywhere (nobs, n_x) = size(XMat)
 @everywhere n_z= size(ZMat)[2]
 @everywhere pbar_n2 = 0;
@@ -179,6 +181,7 @@ ll_w_grad = zeros(Float64, length(np), n_z)
 # Θ_0 = [-1000.73282815577369, 1.94909, 7.960764, 0.0001, 0.35536066706454367, -0.10823587535855583, 0.2486100147839871, 0.2248080375561089, 0.6206315818689631]
 # Θ_0 = [-762.079,1.774,10.7504, 0.13671037841663608026, 0.79119170457287690823, 0.35703443779432908478, 0.42949855017590554684, 0.01820777905828507501, -0.13282396850696606694]
 @everywhere κ = zeros(Float64, n_z)
-Θ_0 = [100.06, 2, 10.80851]
+Θ_0 = [-600., 0.87, 7.80851]
 lopt = optimize(ll!, Θ_0, NelderMead())
 # bopt = bboptimize(ll!; SearchRange = [(-1500.0, 1000.0), (0.001, 5.0), (5.0, 20.0)], Method = :probabilistic_descent)
+# [-963.879,-1.04279e-5,8.85431]

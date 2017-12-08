@@ -1,6 +1,6 @@
 #####################################################################################################
 #
-# Expected Revenue
+# Adoption Rate 
 # Xiliang Lin
 # Jan, 2017
 #
@@ -123,18 +123,19 @@ hhValFun<-function(i, n=300){
 }
 invisible(clusterEvalQ(cl, load("Data/Machine-Adoption/MU-Diff-Asist-NoAdjust.RData")))
 clusterExport(cl, c('pref', 'xvars_all', 'xvars_own', 'xvars_licensed', 'hhValFun'))
-cval_list = parLapply(cl, hh_codes, hhValFun, n=100)
+cval_list = parLapply(cl, hh_codes, hhValFun, n=1000)
 cval_list = rbindlist(cval_list)
 save(cval_list, file = paste(output_dir, "/HH-Util-Diff-Type-NoAdjust.RData", sep=""))
 
-hh_agg[, `:=`(av1 = av1*pprob, av2 = av2*pprob, av3 = av3*pprob1, gv = gv*pprob1)]
-hh_agg[, `:=`(mu_diff1 = av1-gv, mu_diff2 = av2-gv, mu_diff3 = av3-gv)]
-
-load(paste(output_dir, "/HH-Util-Diff-Type.RData", sep=""))
+load(paste(output_dir, "/HH-Util-Diff-Type-NoAdjust.RData", sep=""))
 load(paste(output_dir, "/HW-Full-Panel.RData", sep=""))
-# Remove outliers
-cval_list = cval_list[mu_diff1<=quantile(mu_diff1, 0.99) & mu_diff2<=quantile(mu_diff2, 0.99) & 
-                   mu_diff3<=quantile(mu_diff3, 0.99), ]
+cval_list[, `:=`(mu_diff1 = (av1-gv)*pprob1, mu_diff2 = (av2-gv)*pprob1, mu_diff3 = (av3-gv)*pprob1)]
+bds = cval_list[, quantile(mu_diff1, c(0.001, 0.999))]
+cval_list = cval_list[mu_diff1<=bds[2] & mu_diff1>=bds[1],]
+cval_list[, mu_diff1_lag := c(NA, mu_diff1[1:(length(mu_diff1)-1)]), by = "household_code"]
+cval_list[, mu_diff2_lag := c(NA, mu_diff2[1:(length(mu_diff2)-1)]), by = "household_code"]
+cval_list[, mu_diff3_lag := c(NA, mu_diff3[1:(length(mu_diff3)-1)]), by = "household_code"]
+
 # Merge consumption value back to the value function
 setkey(cval_list, household_code, week_end)
 setkey(hw_panel, household_code, week_end)
@@ -154,11 +155,20 @@ setkey(hw_market_panel, ntrip)
 write.csv(hw_market_panel[,.(household_code, hware, ntrip, t, price, price_avg, price_avgn,
                              mu_diff1, mu_diff2, mu_diff3, thanksgiving, christmas, 
                              bchristmas, achristmas, mother, father, ashare, nbrand)],
-          file = paste(output_dir,"/Type-MU-Panel.csv",sep=""), row.names = FALSE)
-
+          file = paste(output_dir,"/Type-MU-Panel-NoAdjust.csv",sep=""), row.names = FALSE)
 
 # Estimate the parameter governing the evolution process of mu_diff
 # Both time and individual plays a very small role in determining the next period mu_diff.
+fereg1 = plm(log(mu_diff1+1)~log(mu_diff1_lag+1), data = hw_market_panel, index = c("household_code", "week_end"), model = "within")
+fereg2 = plm(log(mu_diff2+1)~log(mu_diff2_lag+1), data = hw_market_panel, index = c("household_code", "week_end"), model = "within")
+fereg3 = plm(log(mu_diff3+1)~log(mu_diff3_lag+1), data = hw_market_panel, index = c("household_code", "week_end"), model = "within")
+summary(fereg1)
+mean(fixef(fereg1))
+summary(fereg2)
+mean(fixef(fereg2))
+summary(fereg3)
+mean(fixef(fereg3))
+
 for (i in 1:3){
   setnames(hw_market_panel, paste0("mu_diff", i), "mu_diff")
   hw_market_panel[, mu_diff_lag := c(NA, mu_diff[1:(length(mu_diff)-1)]), by = "household_code"]

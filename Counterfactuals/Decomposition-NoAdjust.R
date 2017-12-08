@@ -228,14 +228,14 @@ OnlyBestMatch<-function(i, n=1000){
 # Run the codes
 invisible(clusterEvalQ(cl, load('Data/Machine-Adoption/MU-Diff-Asist-NoAdjust.RData')))
 clusterExport(cl, c('NoQualityImprove', 'NoBestMatch', 'OnlyBestMatch'))
-cval_NoQ = parLapply(cl, hh_codes, NoQualityImprove, n=100)
-save(cval_NoQ, file = paste0(output_dir, "/Delta-NoQualityImprovement-NoAdjust-100-Week.RData"))
+cval_NoQ = parLapply(cl, hh_codes, NoQualityImprove, n=1000)
+save(cval_NoQ, file = paste0(output_dir, "/Delta-NoQualityImprovement-NoAdjust-1000-Week.RData"))
 
-cval_NoB = parLapply(cl, hh_codes, NoBestMatch, n=100)
-save(cval_NoB, file = paste0(output_dir, "/Delta-NoBestMatch-NoAdjust-100-Week.RData"))
+cval_NoB = parLapply(cl, hh_codes, NoBestMatch, n=1000)
+save(cval_NoB, file = paste0(output_dir, "/Delta-NoBestMatch-NoAdjust-1000-Week.RData"))
 
-cval_OnB = parLapply(cl, hh_codes, OnlyBestMatch, n=100)
-save(cval_OnB, file = paste0(output_dir, "/Delta-OnlyBestMatch-NoAdjust-100-Week.RData"))
+cval_OnB = parLapply(cl, hh_codes, OnlyBestMatch, n=1000)
+save(cval_OnB, file = paste0(output_dir, "/Delta-OnlyBestMatch-NoAdjust-1000-Week.RData"))
 
 load(paste0(output_dir, "/Delta-NoBestMatch-NoAdjust-100-Week.RData"))
 load(paste0(output_dir, "/Delta-OnlyBestMatch-NoAdjust-100-Week.RData"))
@@ -250,13 +250,17 @@ setkey(cval_OnB, household_code, week_end)
 cval_list[, `:=`(mu_diff_orig = (av-gv)*pprob1)]
 cval_NoB[, `:=`(mu_diff_nob = (av-gv)*pprob1)]
 cval_OnB[, `:=`(mu_diff_onb = (av-gv)*pprob1)]
+cval_list[, `:=`(pprob1 = NULL, pprob2=NULL, pprob=NULL)]
 
 cval_list = cval_list[cval_NoB[, .(household_code, week_end, mu_diff_nob)], nomatch=0L]
 cval_list = cval_list[cval_OnB[, .(household_code, week_end, mu_diff_onb)], nomatch=0L]
-setkey(cval_list, week_end)
+setkey(cval_list, household_code, week_end)
 
-load(paste0(mlogit_dir, "/HW-Full-Panel.RData"))
-cval_list[, `:=`(pprob1 = NULL, pprob2=NULL, pprob=NULL)]
+cval_list[, mu_diff_orig_lag := c(NA, mu_diff_orig[1:(length(mu_diff_orig)-1)]), by = "household_code"]
+cval_list[, mu_diff_nob_lag := c(NA, mu_diff_nob[1:(length(mu_diff_nob)-1)]), by = "household_code"]
+cval_list[, mu_diff_onb_lag := c(NA, mu_diff_onb[1:(length(mu_diff_onb)-1)]), by = "household_code"]
+
+load(paste0(input_dir, "/HW-Full-Panel.RData"))
 
 # Merge consumption value back to the value function
 setkey(cval_list, household_code, week_end)
@@ -279,12 +283,9 @@ write.csv(hw_market_panel[,.(household_code, hware, ntrip, t, price, price_avg, 
                              bchristmas, achristmas, mother, father, ashare, nbrand)],
           file = "Data/Counterfactual/HW-MU-Decomp-NoAdjust.csv", row.names = FALSE)
 
-hw_market_panel[, mu_diff_orig_lag := c(NA, mu_diff_orig[1:(length(mu_diff_orig)-1)]), by = "household_code"]
-hw_market_panel[, mu_diff_nob_lag := c(NA, mu_diff_nob[1:(length(mu_diff_nob)-1)]), by = "household_code"]
-hw_market_panel[, mu_diff_onb_lag := c(NA, mu_diff_onb[1:(length(mu_diff_onb)-1)]), by = "household_code"]
-feregorig = plm(mu_diff_orig~mu_diff_orig_lag, data = hw_market_panel, index = c("household_code", "week_end"), model = "within")
-feregnob = plm(mu_diff_nob~mu_diff_nob_lag, data = hw_market_panel, index = c("household_code", "week_end"), model = "within")
-feregonb = plm(mu_diff_onb~mu_diff_onb_lag, data = hw_market_panel, index = c("household_code", "week_end"), model = "within")
+feregorig = plm(log(mu_diff_orig+1)~log(mu_diff_orig_lag+1), data = hw_market_panel, index = c("household_code", "week_end"), model = "within")
+feregnob = plm(log(mu_diff_nob+1)~log(mu_diff_nob_lag+1), data = hw_market_panel, index = c("household_code", "week_end"), model = "within")
+feregonb = plm(log(mu_diff_onb+1)~log(mu_diff_onb_lag+1), data = hw_market_panel, index = c("household_code", "week_end"), model = "within")
 summary(feregorig)
 mean(fixef(feregorig))
 summary(feregnob)
@@ -293,9 +294,9 @@ summary(feregonb)
 mean(fixef(feregonb))
 
 # Load the probabilities
-probv_orig = fread(paste0(output_dir, "/decomp_type_1.csv"))
-probv_nob = fread(paste0(output_dir, "/decomp_type_2.csv"))
-probv_onb = fread(paste0(output_dir, "/decomp_type_3.csv"))
+probv_orig = fread(paste0(output_dir, "/noadjust_decomp_type_1.csv"))
+probv_nob = fread(paste0(output_dir, "/noadjust_decomp_type_2.csv"))
+probv_onb = fread(paste0(output_dir, "/noadjust_decomp_type_3.csv"))
 setnames(probv_orig, paste0("V", 1:3), c("household_code", "t", "prob"))
 setnames(probv_nob, paste0("V", 1:3), c("household_code", "t", "prob"))
 setnames(probv_onb, paste0("V", 1:3), c("household_code", "t", "prob"))
@@ -303,27 +304,32 @@ probv_orig[, Scenario:="Estimated Adoption Rate"]
 probv_nob[, Scenario:="No Best Match Brand"]
 probv_onb[, Scenario:="Only Best Match Brand"]
 probv = rbindlist(list(probv_orig, probv_nob, probv_onb))
-probv = probv[, .(prob = 1-mean(prob)), by = c("Scenario", "t")]
+probv = probv[!is.na(prob), ]
+probv = probv[, prob := 1-prob]
+setkeyv(probv, c("Scenario", "household_code", "t"))
+probv = probv[, prob := cumprod(prob), by = c("Scenario","household_code")]
+# probv = probv[, .(prob = 1-mean(prob)), by = c("Scenario", "t")]
 setkeyv(probv, c("Scenario", "t"))
-probv[, rate := cumprod(prob), by = "Scenario"]
+probv = probv[, .(rate = mean(prob)), by = c("Scenario", "t")]
 probv[, rate := 1-rate]
-
-ggplot(probv, aes(x = t, y = rate, colour = Scenario, linetype = Scenario)) + 
+week_dt = hw_market_panel[, .(week_end = week_end[1]), by = "t"]
+setkey(week_dt, t)
+setkey(probv, t)
+probv = probv[week_dt, nomatch=0L]
+setkeyv(probv, c("Scenario", "t"))
+ggplot(probv, aes(x = week_end, y = rate, colour = Scenario, linetype = Scenario)) + 
   geom_line() + theme_minimal()+theme(legend.justification=c(0,1), legend.position=c(0,1)) + 
   labs(x = "Time (Week)", y = "Adoption Rate")
+
+load(paste0(output_dir, "/Delta-NoBestMatch-NoAdjust-100-Week.RData"))
+load(paste0(output_dir, "/Delta-OnlyBestMatch-NoAdjust-100-Week.RData"))
+load(paste0(output_dir, "/HH-Choice-Value-NoAdjust.RData"))
 
 cval_list[, `:=`(mu_diff = (av-gv)*pprob1)]
 mean_gain = cval_list[, .(delta25 = quantile(mu_diff, 0.25), delta50 = median(mu_diff), 
                           delta75 = quantile(mu_diff, 0.75)), by = "week_end"]
 mean_gain[, Type:= "Original Option Value"]
 setkey(mean_gain, week_end)
-
-cval_NoQ = rbindlist(cval_NoQ)
-cval_NoQ[, `:=`(mu_diff = (av-gv)*pprob1)]
-mean_gain_NoQ = cval_NoQ[, .(delta25 = quantile(mu_diff, 0.25), delta50 = median(mu_diff), 
-                             delta75 = quantile(mu_diff, 0.75)), by = "week_end"]
-mean_gain_NoQ[, Type := "Remove K-Cup Premium"]
-setkey(mean_gain_NoQ, week_end)
 
 cval_NoB = rbindlist(cval_NoB)
 cval_NoB[, `:=`(mu_diff = (av-gv)*pprob1)]
@@ -339,8 +345,8 @@ mean_gain_OnB = cval_OnB[, .(delta25 = quantile(mu_diff, 0.25), delta50 = median
 mean_gain_OnB[, Type := "Only Best Match"]
 setkey(mean_gain_OnB, week_end)
 
-mean_gain = rbindlist(list(mean_gain, mean_gain_NoQ, mean_gain_NoB, mean_gain_OnB))
-mean_gain[, Type := factor(Type, levels = c("Original Option Value", "No Best Match", "Remove K-Cup Premium", "Only Best Match"))]
+mean_gain = rbindlist(list(mean_gain, mean_gain_NoB, mean_gain_OnB))
+mean_gain[, Type := factor(Type, levels = c("Original Option Value", "No Best Match", "Only Best Match"))]
 
 # Plot these
 ggplot(mean_gain, aes(x = week_end, y = delta50, colour = Type, linetype = Type)) + 

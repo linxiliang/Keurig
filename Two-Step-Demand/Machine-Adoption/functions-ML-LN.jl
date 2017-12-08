@@ -1,14 +1,15 @@
 # Functions
+(hermitenodes, hermitewts)=gausshermite(10);
 function hermiteint(f::Function, μ::Float64, σ::Float64)
- return sqrt(1./pi) * sum(map(f, sqrt(2.)*σ*hermitenodes + μ) .* hermitewts);
+ return sqrt(1./pi) * sum(map(f, exp(sqrt(2.)*σ*hermitenodes + μ).- 1.) .* hermitewts);
 end
 
 # Numerical Integration for independent normals.
-(hermitenodes, hermitewts)=gausshermite(10);
 function hermiteint2d(w_tensor::Array{Float64,3}, μ::Array{Float64,1}, σ::Array{Float64,1}, pbar::Real)
   nx = length(μ);
-  nd = length(hermitenodes)
-  xn = sqrt(2.)*σ*hermitenodes' .+ μ;
+  nd = length(hermitenodes);
+  xn = exp(sqrt(2.)*σ*hermitenodes' .+ μ);
+  xn[2,:] = xn[2,:] .- 1.0;
   EV = 0;
   for i in 1:nd
     for j in 1:nd
@@ -21,7 +22,7 @@ end
 function W1V(cweights::Array{Float64, 1})
    wappx(x::Real) = chebyshev_evaluate(cweights,[x],delta_order,delta_range)
    function wfun(ν::Real)
-       return ν + β * hermiteint(wappx, α0+α1*ν, σ0)
+       return ν + β * hermiteint(wappx, α0+α1*log(ν+1), σ0)
    end
    return map(wfun, delta_nodes)
 end
@@ -30,7 +31,7 @@ function wupdate!(θ_a::Vector, w_tensor::Array{Float64, 3})
   for h in 1:nobs
     w0_b[h] = chebyshev_evaluate(w_tensor, XMat[h,:], order_tensor, range);
   end
-  return NULL
+  return 0
 end
 
 function ll_fun!(Θ_a::Vector, κ::Vector)
@@ -52,7 +53,7 @@ end
 
 llvec = zeros(Float64, length(np))
 function ll!(Θ_a::Vector)
-  #Θ_a = [Θ_a[1], 1, Θ_a[2]]
+  #Θ_a = [Θ_a[1], 2.50438, Θ_a[2]]
   println("The parameter is $(Θ_a)")
   err = 1;
   nx = 0;
@@ -68,7 +69,8 @@ function ll!(Θ_a::Vector)
       @sync begin
         @parallel for (i,j,k) in mgrid
           pbar_n2 =  ω * nodes_1[i] + (1-ω) * nodes_2[j];
-          mu = [ρ0 + ρ1 * pbar_n2, α0 + α1 * nodes_3[k]];
+          # mu = [ρ0 + ρ1 * log(pbar_n2)+ρ2 * log(nodes_3[k]+1), α0 + α1 * log(nodes_3[k]+1)];
+          mu = [ρ0 + ρ1 * log(pbar_n2), α0 + α1 * log(nodes_3[k]+1)];
           EW_v0 = β * hermiteint2d(w_tensor, mu, sigma, pbar_n2)/(Θ_a[3]^2);
           EW_v1 = (Θ_a[1] - (Θ_a[2]^2) * nodes_1[i] + EW1x[k])/(Θ_a[3]^2);
           wgrid_new[i, j, k] = Θ_a[3]^2 * log(exp(EW_v0) + exp(EW_v1))
@@ -84,7 +86,8 @@ function ll!(Θ_a::Vector)
  # Directly approximate the expected value of the next period W.
   for (i,j,k) in mgrid
     pbar_n2 =  ω * nodes_1[i] + (1-ω) * nodes_2[j];
-    mu = [ρ0 + ρ1 * pbar_n2, α0 + α1 * nodes_3[k]];
+    # mu = [ρ0 + ρ1 * log(pbar_n2) + ρ2 * log(nodes_3[k]+1), α0 + α1 * log(nodes_3[k]+1)];
+    mu = [ρ0 + ρ1 * log(pbar_n2), α0 + α1 * log(nodes_3[k]+1)];
     ExpectedW[i, j, k] = β * hermiteint2d(w_tensor, mu, sigma, pbar_n2)/(Θ_a[3]^2);
   end
 

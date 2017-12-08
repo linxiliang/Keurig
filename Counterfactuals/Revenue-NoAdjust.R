@@ -121,7 +121,7 @@ hhRevFun<-function(i, n=300){
 }
 invisible(clusterEvalQ(cl, load("Data/Machine-Adoption/MU-Diff-Asist-NoAdjust.RData")))
 clusterExport(cl, c('pref', 'xvars_all', 'xvars_own', 'xvars_licensed', 'hhRevFun'))
-hh_br_rev = parLapply(cl, hh_codes, hhRevFun, 100)
+hh_br_rev = parLapply(cl, hh_codes, hhRevFun, 1000)
 hh_br_rev = rbindlist(hh_br_rev)
 save(hh_br_rev, file = paste(output_dir, "/HH-Rev-Panel-NoAdjust.RData", sep=""))
 

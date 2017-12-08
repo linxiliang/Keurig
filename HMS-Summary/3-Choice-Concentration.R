@@ -226,10 +226,18 @@ pbrands_learn[,`:=`(Status = factor(ifelse(two_year_status==0, 'Before Adoption'
                               levels = c("Before Adoption", "Within 2 Years of Adoption", 
                                          "2 Years after Adoption")))]
 
-pdf(file=paste(graph_dir, "/figs/HMS-HHI-HH-BALearn.pdf", sep=""), width=8, height=5)
-ggplot(pbrands_learn[ever_holder==1, .(hhi, Status)], aes(x=hhi))+
-  geom_histogram(alpha=1, center=200, aes(y = ..density..), binwidth=400, col="grey30", fill="skyblue")+
-  scale_x_continuous("HHI", limits = c(0, 10000)) + theme_minimal() + facet_wrap(~ Status)
+pdf(file=paste(graph_dir, "/figs/HMS-HHI-HH-BALearn.pdf", sep=""), width=6, height=4)
+ggplot(pbrands_learn[ever_holder==1, .(hhi, Status)], aes(x=hhi, fill=Status))+
+  geom_histogram(alpha=1, center=200, aes(y = ..density..), binwidth=400, col="grey30")+
+  scale_x_continuous("HHI", limits = c(0, 10000)) + theme_minimal() + facet_wrap(~ Status)+
+  scale_fill_manual(values=c("skyblue", "hotpink", "red"), guide=F)
+dev.off()
+
+pdf(file=paste(graph_dir, "/figs/HMS-C1-HH-BALearn.pdf", sep=""), width=6, height=4)
+ggplot(pbrands_learn[ever_holder==1, .(c1, Status)], aes(x=c1, fill=Status))+ theme_minimal() +
+  geom_histogram(alpha=1, center=0.025, aes(y = ..density..), binwidth=0.05, col="grey30")+
+  scale_x_continuous("Expenditure Share of the Top Purchased Brand", limits = c(0, 1)) +
+  facet_grid(~Status)+scale_fill_manual(values=c("skyblue", "hotpink", "red"), guide=F)
 dev.off()
 
 #----------------------------------------------------------------------------------------------#

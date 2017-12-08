@@ -22,6 +22,7 @@ library(bayesm)
 library(MASS)
 setNumericRounding(0)
 library(nloptr)
+library(plm)
 
 # Set Working Folder Path Here
 setwd("~/Keurig")
@@ -40,14 +41,14 @@ Rcpp::sourceCpp('Scripts/Two-Step-Demand/Machine-Adoption/CoffeeValue.cpp')
 
 #---------------------------------------------------------------------------------------------------#
 # Initialize Parallel Execution Environment
-primary <- 'bushgcn10'
+primary <- 'bushgcn30'
 machineAddresses <- list(
   list(host=primary, user='xlin0',
-       ncore=24),
-  list(host='bushgcn11',user='xlin0',
-       ncore=24),
-  list(host='bushgcn13',user='xlin0',
-       ncore=24)
+       ncore=28),
+  list(host='bushgcn31',user='xlin0',
+       ncore=28),
+  list(host='bushgcn32',user='xlin0',
+       ncore=28)
 )
 
 spec <- lapply(machineAddresses,
@@ -73,6 +74,7 @@ invisible(clusterEvalQ(cl, setNumericRounding(0)))
 invisible(clusterEvalQ(cl, library(bayesm)))
 invisible(clusterEvalQ(cl, library(MASS)))
 invisible(clusterEvalQ(cl, library(nloptr)))
+invisible(clusterEvalQ(cl, library(plm)))
 invisible(clusterEvalQ(cl, library(Rcpp)))
 invisible(clusterEvalQ(cl, library(RcppArmadillo)))
 invisible(clusterEvalQ(cl, setwd('~/Keurig')))
@@ -201,7 +203,7 @@ Names = list(id = "household_code", xnames = pnames, yname = "coffee_trip", znam
 MCMC = list(R=5000, thin=2, sample_ratio=0.05)
 Par = list(cl=cl)
 # Data
-out = BinaryLogitSampler(hh_panel, ZD = hh_demo, Names, MCMC, Par)
+# out = BinaryLogitSampler(hh_panel, ZD = hh_demo, Names, MCMC, Par)
 # Predict choice probabilities for each household
 k = 0
 for (h in selected_hh){
@@ -226,7 +228,7 @@ gc()
 setkey(hh_panel, household_code, panel_year)
 hh_panel = hh_panel[hh[, .(household_code, panel_year, dma_code)], nomatch=0L]
 # hh_panel = hh_panel[(is.na(k_first_week) | week_end<=k_first_week), ]
-hh_panel = hh_panel[inv_type<=600&week_end>="2007-01-01"&dma_code%in%big_markets, ]
+hh_panel = hh_panel[inv_type<=950&week_end>="2007-01-01"&dma_code%in%big_markets, ]
 # Drop households who didn't adopt in top markets
 # hh_panel[, ftemp := sum(is.na(k_first_week)|k_first_week==week_end), by ="household_code"]
 # hh_panel = hh_panel[ftemp>=1, ]
@@ -294,7 +296,7 @@ hhValFun<-function(i, n=1000){
 }
 invisible(clusterEvalQ(cl, load('Data/Machine-Adoption/MU-Diff-Asist-NoAdjust.RData')))
 clusterExport(cl, c('pref', 'xvars', 'hhValFun'))
-cval_list = parLapply(cl, hh_codes, hhValFun, n=100)
+cval_list = parLapply(cl, hh_codes, hhValFun, n=300)
 cval_list = rbindlist(cval_list)
 save(cval_list, file = paste(output_dir, "/HH-Choice-Value-NoAdjust.RData", sep=""))
 cval_list[, `:=`(mu_diff = (av-gv)*pprob1)]
@@ -305,12 +307,15 @@ setkey(mean_gain, week_end)
 save(cval_list, mean_gain, file = paste(output_dir, "/HH-Util-Diff-NoAdjust.RData", sep=""))
 
 load(paste(output_dir, "/HH-Util-Diff-NoAdjust.RData", sep=""))
-load(paste(output_dir, "/HH-HW-Panel.RData", sep=""))
-cval_list[, mu_diff:=(av-gv)*pprob1]
-
-# Merge consumption value back to the value function
+load(paste(output_dir, "/HW-Full-Panel.RData", sep=""))
+# load(paste(output_dir, "/HH-HW-Panel.RData", sep=""))
 setkey(cval_list, household_code, week_end)
 setkey(hw_panel, household_code, week_end)
+cval_list[, mu_diff:=(av-gv)*pprob1]
+cval_list[, mu_diff_lag := c(NA, mu_diff[1:(length(mu_diff)-1)]), by = "household_code"]
+cval_list[, mu_diff_lag_2 := c(NA, mu_diff_lag[1:(length(mu_diff_lag)-1)]), by = "household_code"]
+
+# Merge consumption value back to the value function
 hw_market_panel = hw_panel[cval_list, nomatch=0L]
 
 # Load market specific information.
@@ -333,8 +338,6 @@ write.csv(hw_market_panel[,.(household_code, hware, ntrip, t, price, price_avg, 
 
 # Estimate the parameter governing the evolution process of mu_diff
 # Both time and individual plays a very small role in determining the next period mu_diff.
-hw_market_panel[, mu_diff_lag := c(NA, mu_diff[1:(length(mu_diff)-1)]), by = "household_code"]
-hw_market_panel[, mu_diff_lag_2 := c(NA, mu_diff_lag[1:(length(mu_diff_lag)-1)]), by = "household_code"]
 hw_market_panel[, nobs := .N, by = "household_code"]
 # Get at the Markove assumption]
 pval_lag1 <- function(form){
@@ -359,18 +362,23 @@ sigfun <- function(form){
   return(summary(regx)$sigma)
 }
 
-hw_markov_check = hw_market_panel[nobs>=10, .(p_lag1 = pval_lag1(mu_diff~mu_diff_lag+mu_diff_lag_2),
-                                              p_lag2 = pval_lag2(mu_diff~mu_diff_lag+mu_diff_lag_2),
-                                              gamma1 = gamma1fun(mu_diff~mu_diff_lag),
-                                              gamma2 = gamma2fun(mu_diff~mu_diff_lag),
-                                              sig = sigfun(mu_diff~mu_diff_lag),
-                                              purchased = sum(purchased)), 
+hw_markov_check = hw_market_panel[nobs>=52, .(p_lag1 = pval_lag1(log(mu_diff+1)~log(mu_diff_lag+1)+log(mu_diff_lag_2+1)),
+                                              p_lag2 = pval_lag2(log(mu_diff+1)~log(mu_diff_lag+1)+log(mu_diff_lag_2+1)),
+                                              gamma1 = gamma1fun(log(mu_diff+1)~log(mu_diff_lag+1)),
+                                              gamma2 = gamma2fun(log(mu_diff+1)~log(mu_diff_lag+1)),
+                                              sig = sigfun(mu_diff~mu_diff_lag)), 
                                   by = "household_code"]
-regout = hw_market_panel[, lm(mu_diff~mu_diff_lag)]
+regout = hw_market_panel[, lm(log(mu_diff+1)~log(mu_diff_lag+1))]
 summary(regout)
 
-fereg0 = plm(mu_diff~mu_diff_lag, data = hw_market_panel, index = c("household_code", "week_end"), model = "within")
-fereg1 = plm(mu_diff~mu_diff_lag+mu_diff_lag_2, data = hw_market_panel, index = c("household_code", "week_end"), model = "within")
-fereg2 = plm(mu_diff ~ mu_diff_lag, data = hw_market_panel, index = c("household_code", "week_end"), model = "random")
+#fereg0 = plm(mu_diff~mu_diff_lag, data = hw_market_panel, index = c("household_code", "week_end"), model = "within")
+fereg0 = plm(log(mu_diff+1)~log(mu_diff_lag+1), data = hw_market_panel, index = c("household_code", "week_end"), model = "within")
+#fereg1 = plm(mu_diff~mu_diff_lag+mu_diff_lag_2, data = hw_market_panel, index = c("household_code", "week_end"), model = "within")
+#fereg2 = plm(mu_diff ~ mu_diff_lag, data = hw_market_panel, index = c("household_code", "week_end"), model = "random")
 summary(fereg0)
 mean(fixef(fereg0))
+
+fereg1 = plm(log(price)~log(price_avg), data = hw_market_panel, index = c("household_code", "week_end"), model = "within")
+summary(fereg1)
+mean(fixef(fereg1))
+
