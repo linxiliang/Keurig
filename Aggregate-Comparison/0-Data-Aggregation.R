@@ -67,3 +67,13 @@ move_agg[, volume := units*size1_amount*multi]
 move_agg = move_agg[, .(volume = sum(volume), revenue_RMS=sum(revenue_RMS)), 
                     by = c("panel_year", "geo_code", "geo_level", "week_end", p_ind_var)]
 setkey(move_agg, panel_year, geo_code, geo_level, week_end, ptype, brand_descr)
+
+# Drop all other types except ground coffee and Keurig
+move_agg = move_agg[ptype %in% c("OTHER", "KEURIG"), ]
+gc()
+
+# Overall revenue and overall sales
+move_agg[, tot_volume := sum(volume), by = c("panel_year", "geo_code", "geo_level", "week_end")]
+move_agg[, inside_share := volume/tot_volume, by = c("panel_year", "geo_code", "geo_level", "week_end")]
+
+# 
