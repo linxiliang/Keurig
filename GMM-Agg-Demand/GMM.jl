@@ -81,13 +81,13 @@ end
 err_vec = [sum((xifun(Float64(i), mkt) - rxifun(Float64(i), mkt)).^2) for i in 1:20]
 
 # Outer Constructor to construct types
-FullMarket(market::BasicMarket, pref::Pref) = FullMarket(BasicMarket)
-function Derived(Z, X, )
-market(Z::Array{Float64, 2}, X::Array{Float64, 2}, N::Int64, M::Int64, A::Int64,
-sales::Array{Float64, 1})
-
+FullMarket(market::BasicMarket, pref::Array{Float64, 1}) = FullMarket(BasicMarket)
+function Derived(Z, X, x)
+end
+# market(Z::Array{Float64, 2}, X::Array{Float64, 2}, N::Int64, M::Int64, A::Int64,
+# sales::Array{Float64, 1})
 
 # Gauss Hermite Nodes
-sum((sqrt(2.)*hermite_nodes).^2 .* hermite_wts)*(sqrt(1./pi))^1
-exp(sqrt(2.)*σ*hermitenodes' .+ μ)
-exp(sqrt(2.)*σ*hermitenodes' .+ μ)
+#sum((sqrt(2.)*hermite_nodes).^2 .* hermite_wts)*(sqrt(1./pi))^1
+#exp(sqrt(2.)*σ*hermitenodes' .+ μ)
+#exp(sqrt(2.)*σ*hermitenodes' .+ μ)
