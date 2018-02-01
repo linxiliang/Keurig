@@ -42,11 +42,10 @@ or, I will allow β to be random.
 Type market
 market(Z::Array{Float64, 2}, X::Array{Float64, 2}, N::Int64, M::Int64, A::Int64,
 sales::Array{Float64, 1})
+
 # Functions of the market
 hardware.market.share = A/M
 software.market.share = sales/(N*k + M*k) if ground
                       = sales/(N*k) if Keurig
 # Give preferences compute the simulated market share
-
-
 =#
