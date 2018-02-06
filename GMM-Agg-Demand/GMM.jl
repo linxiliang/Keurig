@@ -95,3 +95,5 @@ end
 #sum((sqrt(2.)*hermite_nodes).^2 .* hermite_wts)*(sqrt(1./pi))^1
 #exp(sqrt(2.)*σ*hermitenodes' .+ μ)
 #exp(sqrt(2.)*σ*hermitenodes' .+ μ)
+
+# Test whether Atom git works
