@@ -55,7 +55,7 @@ function rxifun(sig::Float64, m::Market)
     meanU = zeros(Float64, nprod)
     err = 1.0
     # Random Draws of tastes
-    rnodes = randn(300000)
+    rnodes = randn(30000)
     while (err >= 1e-16)
         UMat = exp.(meanU .+ sig * rnodes')
         PMat_N = UMat ./ (sum(UMat, 1).+1)
@@ -70,4 +70,25 @@ function rxifun(sig::Float64, m::Market)
         meanU = meanU_new
     end
     return meanU[:,1]
+end
+
+# Settings of a market
+Z = [1.0, 145.6];
+X = [1.0 0.0 0.0 0.0 0.16; 0.0 1.0 0.0 1.0 0.48; 0.0 0.0 1.0 1.0 0.50];
+G = [1.0, 0.0, 0.0];
+N = 100;
+M = 200;
+A = 10;
+sales = [50.0, 10.0, 15.0];
+bmkt = BasicMarket(Z, X, G, N, M, A, sales);
+mkt = Market(bmkt);
+fmkt = FullMarket(2.0, mkt);
+
+# Check whether xifun and rxifun give the same results
+err_vec = [sum((xifun(Float64(i), mkt) - rxifun(Float64(i), mkt)).^2) for i in 1:20]
+
+
+# Check whether xifun and rxifun give the same results
+if (maximum(sqrt.(err_vec)./collect(1:20))<0.05)
+    println("error checking passed! ")
 end

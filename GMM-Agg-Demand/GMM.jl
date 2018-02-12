@@ -35,21 +35,7 @@ broad_mpi(:(using FastGaussQuadrature))
 @everywhere const consumption_rate = 3;
 broad_mpi(:(include("Scripts/GMM-Agg-Demand/Initialization.jl")))
 
-# Settings of a market
-Z = [1.0, 145.6];
-X = [1.0 0.0 0.0 0.0 0.16; 0.0 1.0 0.0 1.0 0.48; 0.0 0.0 1.0 1.0 0.50];
-G = [1.0, 0.0, 0.0];
-N = 100;
-M = 200;
-A = 10;
-sales = [50.0, 10.0, 15.0];
-bmkt = BasicMarket(Z, X, G, N, M, A, sales);
-mkt = Market(bmkt);
-xifun(2.0, mkt)
-fmkt = FullMarket(2.0, mkt)
-
-# Check whether xifun and rxifun give the same results
-err_vec = [sum((xifun(Float64(i), mkt) - rxifun(Float64(i), mkt)).^2) for i in 1:20]
+# Given the settings and functions compute the GMM Objective
 
 # Outer Constructor to construct types
 function Derived(Z, X, x)
