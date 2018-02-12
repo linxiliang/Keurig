@@ -1,6 +1,6 @@
 # Load necessary library
 using FastGaussQuadrature
-global (hermite_nodes, hermite_wts) = gausshermite(20);
+global (hermite_nodes, hermite_wts) = gausshermite(21);
 const consumption_rate = 3;
 
 # Module file defining the market class
