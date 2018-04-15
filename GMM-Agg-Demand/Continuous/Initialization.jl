@@ -2,12 +2,12 @@
 
 # Module file defining the market class
 struct BasicMarket
-    Z::Array{Float64, 1}
-    X::Array{Float64, 2}
-    G::Array{Float64, 1}
-    N::Int64
-    M::Int64
-    A::Int64
+    Z::Array{Float64, 1} # A vector governing Adoption
+    X::Array{Float64, 2} # Variables governing Purchases
+    G::Array{Float64, 1} # A vector indicating whether the product is ground
+    N::Int64 # Number of cumulative Adopters
+    M::Int64 # Number of consumers in the market
+    A::Int64 # Adopters of the current period
     sales::Array{Float64, 1}
 end
 
@@ -15,8 +15,8 @@ struct Market
     market::BasicMarket
     hshare::Float64
     cshare::Array{Float64, 1}
-    Market(market::BasicMarket) = new(market, A/M,
-    sales./(consumption_rate*(N+M.*G)))
+    Market(market::BasicMarket) = new(market, market.A/(market.M-market.N+market.A),
+    market.sales ./ (consumption_rate*market.M))
 end
 
 struct FullMarket
@@ -37,10 +37,10 @@ function xifun(sig::Float64, m::Market)
         UMat = exp.(meanU .+ sqrt(2.) * sig * hermite_nodes')
         PMat_N = UMat ./ (sum(UMat, 1) .+ 1)
         PMat_M = UMat .* m.market.G ./ (sum(UMat .* m.market.G, 1).+1)
-        PMat = m.market.N./(m.market.M * m.market.G .+ m.market.N) .* PMat_N +
-        m.market.M * m.market.G/(m.market.M+m.market.N) .* PMat_M
+        PMat = m.market.N/(m.market.M) .* PMat_N +
+        (m.market.M - m.market.N)/(m.market.M) .* PMat_M
         SVec = scaling_param * sum(PMat .* hermite_wts', 2)
-        # Nested Fix Point Algorithmß
+        # Nested Fix Point Algorithm
         meanU_new = meanU + log.(m.cshare) - log.(SVec)
         err = sum((meanU_new - meanU).^2)
         #println("The error is $(err)")
@@ -55,13 +55,13 @@ function rxifun(sig::Float64, m::Market)
     meanU = zeros(Float64, nprod)
     err = 1.0
     # Random Draws of tastes
-    rnodes = randn(30000)
+    rnodes = randn(3000)
     while (err >= 1e-16)
         UMat = exp.(meanU .+ sig * rnodes')
         PMat_N = UMat ./ (sum(UMat, 1).+1)
         PMat_M = UMat .* m.market.G ./ (sum(UMat .* m.market.G, 1).+1)
-        PMat = m.market.N./(m.market.M * m.market.G .+ m.market.N) .* PMat_N +
-        m.market.M * m.market.G/(m.market.M+m.market.N) .* PMat_M
+        PMat = m.market.N/(m.market.M) .* PMat_N +
+        (m.market.M - m.market.N)/(m.market.M) .* PMat_M
         SVec = mean(PMat, 2)
         # Nested Fix Point Algorithm
         meanU_new = meanU + log.(m.cshare) - log.(SVec)
@@ -91,4 +91,6 @@ err_vec = [sum((xifun(Float64(i), mkt) - rxifun(Float64(i), mkt)).^2) for i in 1
 # Check whether xifun and rxifun give the same results
 if (maximum(sqrt.(err_vec)./collect(1:20))<0.05)
     println("error checking passed! ")
+else
+    println("Two functions doesn't match!!!")
 end
