@@ -1,5 +1,5 @@
 # Functions
-(hermitenodes, hermitewts)=gausshermite(10);
+(hermitenodes, hermitewts)=gausshermite(15);
 function hermiteint(f::Function, μ::Float64, σ::Float64)
  return sqrt(1./pi) * sum(map(f, exp(sqrt(2.)*σ*hermitenodes + μ).- 1.) .* hermitewts);
 end
