@@ -12,7 +12,7 @@ if remote
   # machines = [("bushgcn11", 12), ("bushgcn12", 12)]
   addprocs(machines; tunnel=true)
 else
-  addprocs(20; restrict=false)
+  addprocs(48; restrict=false)
 end
 np = workers()
 remotecall_fetch(rand, 2, 20) # Test worker
@@ -44,18 +44,18 @@ if acadjust
   @everywhere α1 = 0.91602396;
   @everywhere σ0 = 0.5124003;
 else
-  @everywhere α0 = 0.02552319;
-  @everywhere α1 = 0.96285965;
-  @everywhere σ0 = 0.1081999;
+  @everywhere α0 = 0.0115345;
+  @everywhere α1 = 0.9863566;
+  @everywhere σ0 = 0.1086;
 end
 
 # Reference Price: p_ref' = ω⋅price + (1-ω)⋅p_ref
-@everywhere ω = 0.2939151
+@everywhere ω = 0.2703183
 # Price: price' = ρ0 + ρ1⋅price + ɛ, ɛ~N(0,σ1^2)
-@everywhere ρ0 = 0.3427638
-@everywhere ρ1 = 0.93099801
+@everywhere ρ0 = 0.2764826
+@everywhere ρ1 = 0.9411549
 #@everywhere ρ2 = 0.00025473
-@everywhere σ1 = 0.04110696
+@everywhere σ1 = 0.0536
 
 # Load all function
 @everywhere include("$(homedir())/Keurig/Scripts/Two-Step-Demand/Machine-Adoption/functions-ML-LN.jl")
@@ -66,7 +66,7 @@ if acadjust
 else
   hh_panel = readdlm("Data/Machine-Adoption/HW-MU-Panel-NoAdjust.csv", ',', skipstart=1); # Household Machine Adoption Panel
 end
-hh_panel[:, 4] = log(hh_panel[:, 4])
+hh_panel[:, 4] = log.(hh_panel[:, 4])
 
 # NA list
 None_NA_list=Array(Int64, 0)
@@ -96,21 +96,22 @@ end
 
 @everywhere purch_vec = convert(Array{Int64}, hh_panel[:, 9])
 @everywhere XMat = convert(Array{Float64}, hh_panel[:, [5, 6, 8]])
+@everywhere XMat[:, 1:2] = XMat[:, 1:2]./100
 @everywhere ZMat = hh_panel[:, vcat(10:15, 4)] # With a linear time trend
 # @everywhere ZMat = hh_panel[:, 10:15]
 @everywhere ZMat = sparse(convert(Array{Float64}, ZMat))
 @everywhere pbar_n2 =  ω * XMat[:,1] + (1-ω) * XMat[:,2];
-# @everywhere SMat = transpose(hcat(ρ0 + ρ1 * log(pbar_n2) + ρ2 * log(XMat[:,3].+1), pbar_n2, α0 + α1 * log(XMat[:,3].+1)))
-@everywhere SMat = transpose(hcat(ρ0 + ρ1 * log(pbar_n2), pbar_n2, α0 + α1 * log(XMat[:,3].+1)))
+# @everywhere SMat = transpose(hcat(ρ0 + ρ1 * log.(pbar_n2) + ρ2 * log.(XMat[:,3].+1), pbar_n2, α0 + α1 * log.(XMat[:,3].+1)))
+@everywhere SMat = transpose(hcat(ρ0 + ρ1 * log.(pbar_n2), log.(pbar_n2), α0 + α1 * log.(XMat[:,3].+1)))
 @everywhere (nobs, n_x) = size(XMat)
 @everywhere n_z= size(ZMat)[2]
 @everywhere pbar_n2 = 0;
 @everywhere gc();
 
 # Chebyshev Approximation Setup
-@everywhere delta_n = 20; # Degree of Chebyshev Zeros (nodes)
+@everywhere delta_n = 15; # Degree of Chebyshev Zeros (nodes)
 @everywhere delta_order = [5]; # Degree of Chebyshev Polynomials
-delta_range = [maximum(XMat[:,3]), minimum(XMat[:,3])] # Range of option value
+delta_range = [maximum(XMat[:,3])*1.2, minimum(XMat[:,3])*0.8] # Range of option value
 broad_mpi(:(delta_range = $delta_range))
 @everywhere delta_nodes = chebyshev_nodes(delta_n, delta_range)
 W1 = zeros(Float64, delta_n);
@@ -126,7 +127,7 @@ else
       nx = nx+1;
       delta_cheby_weights = chebyshev_weights(W1, delta_nodes, delta_order, delta_range)
       W1n = W1V(delta_cheby_weights)
-      err = sum(abs(W1n-W1))
+      err = maximum(abs(W1n-W1))
       println("Error is $(err), and interation is $(nx)")
       W1 = W1n
   end
@@ -136,13 +137,13 @@ broad_mpi(:(delta_cheby_weights = $delta_cheby_weights))
 @everywhere W1Vec = [wappx(XMat[i,3]) for i in 1:nobs]
 
 # Chebyshev Approximation of W function
-@everywhere n1 = 12;
-@everywhere n2 = 12;
-@everywhere n3 = 12;
+@everywhere n1 = 15;
+@everywhere n2 = 15;
+@everywhere n3 = 15;
 
-range_1 = [maximum(XMat[:,1]), minimum(XMat[:,1])]
-range_2 = [maximum(XMat[:,2]), minimum(XMat[:,2])]
-range_3 = [maximum(XMat[:,3]), minimum(XMat[:,3])]
+range_1 = [maximum(XMat[:,1])*1.2, minimum(XMat[:,1])*0.8]
+range_2 = [maximum(XMat[:,2])*1.2, minimum(XMat[:,2])*0.8]
+range_3 = [maximum(XMat[:,3])*1.2, minimum(XMat[:,3])*0.8]
 broad_mpi(:(range_1 = $range_1))
 broad_mpi(:(range_2 = $range_2))
 broad_mpi(:(range_3 = $range_3))
@@ -176,12 +177,13 @@ tol = 1e-8;
 @everywhere w1_b = Array(Float64, nobs);
 @everywhere w0_b = Array(Float64, nobs);
 wgrid = zeros(Float64, n1,n2,n3)
+wgrid_new = SharedArray(Float64, n1, n2, n3);
 ExpectedW = zeros(Float64, n1,n2,n3)
 ll_w_grad = zeros(Float64, length(np), n_z)
 # Θ_0 = [-1000.73282815577369, 1.94909, 7.960764, 0.0001, 0.35536066706454367, -0.10823587535855583, 0.2486100147839871, 0.2248080375561089, 0.6206315818689631]
 # Θ_0 = [-762.079,1.774,10.7504, 0.13671037841663608026, 0.79119170457287690823, 0.35703443779432908478, 0.42949855017590554684, 0.01820777905828507501, -0.13282396850696606694]
 @everywhere κ = zeros(Float64, n_z)
-Θ_0 = [-600., 0.87, 7.80851]
-lopt = optimize(ll!, Θ_0, NelderMead())
-# bopt = bboptimize(ll!; SearchRange = [(-1500.0, 1000.0), (0.001, 5.0), (5.0, 20.0)], Method = :probabilistic_descent)
+Θ_0 = [-9.53665, 1.17825, 0.0705927]
+lopt = optimize(ll!, Θ_0, BFGS())
+# bopt = bboptimize(ll!; SearchRange = [(-50.0, 50.0), (0.001, 2.0), (0.001, 1.0)], Method = :de_rand_2_bin_radiuslimited)
 # [-963.879,-1.04279e-5,8.85431]

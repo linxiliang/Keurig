@@ -312,8 +312,12 @@ load(paste(output_dir, "/HW-Full-Panel.RData", sep=""))
 setkey(cval_list, household_code, week_end)
 setkey(hw_panel, household_code, week_end)
 cval_list[, mu_diff:=(av-gv)*pprob1]
-cval_list[, mu_diff_lag := c(NA, mu_diff[1:(length(mu_diff)-1)]), by = "household_code"]
+cval_list[, `:=`(mu_diff_lag = c(NA, mu_diff[1:(length(mu_diff)-1)]),
+                 week_end_lag = c(NA, week_end[1:(length(week_end)-1)])), by = "household_code"]
 cval_list[, mu_diff_lag_2 := c(NA, mu_diff_lag[1:(length(mu_diff_lag)-1)]), by = "household_code"]
+
+# Regression
+mu_reg = cval_list[(week_end-week_end_lag)==7, lm(log(mu_diff+1)~log(mu_diff_lag+1))]
 
 # Merge consumption value back to the value function
 hw_market_panel = hw_panel[cval_list, nomatch=0L]
@@ -335,6 +339,9 @@ write.csv(hw_market_panel[,.(household_code, hware, ntrip, t, price, price_avg, 
                              mu_diff, purchased, thanksgiving, christmas, 
                              bchristmas, achristmas, mother, father, ashare, nbrand)],
           file = "Data/Machine-Adoption/HW-MU-Panel-NoAdjust.csv", row.names = FALSE)
+
+# Estimate the lagged regression
+
 
 # Estimate the parameter governing the evolution process of mu_diff
 # Both time and individual plays a very small role in determining the next period mu_diff.
