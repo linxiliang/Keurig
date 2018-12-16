@@ -28,70 +28,63 @@ broad_mpi(:(np = $np));
 @everywhere cd("$(homedir())/Keurig");
 
 # Computation Settings
+acadjust = false; # Whether to adjust for crowded product space
 @everywhere controls = true; # Add controls such as seasonality
 @everywhere cons_av = false; # Constant adoption value
 
 # Load Packages
-using Distributions, Optim, FastGaussQuadrature, Calculus
-broad_mpi(:(using Distributions, Optim, FastGaussQuadrature, Calculus))
+using Distributions, Optim, FastGaussQuadrature, Calculus, ChebyshevApprox, StatsBase, BlackBoxOptim;
+broad_mpi(:(using Distributions, Optim, FastGaussQuadrature, Calculus, ChebyshevApprox, StatsBase, BlackBoxOptim;))
 
 # Parameter settings
 @everywhere β  = 0.995;
 # δ' = α0 + α1⋅δ + ϵ, ϵ~N(0,σ0^2)
-@everywhere α0 = 0.1323974;
-@everywhere α1 = 0.91602396;
-@everywhere σ0 = 0.5124003;
+if acadjust
+  @everywhere α0 = 0.1323974;
+  @everywhere α1 = 0.91602396;
+  @everywhere σ0 = 0.5124003;
+else
+  @everywhere α0 = 0.0115345;
+  @everywhere α1 = 0.9863566;
+  @everywhere σ0 = 0.1086;
+end
+
 # Reference Price: p_ref' = ω⋅price + (1-ω)⋅p_ref
-@everywhere ω = 0.286745
-# Price: price' = ρ0 + ρ1⋅price + ɛ, ɛ~N(0,σ1^2)
-@everywhere ρ0 = 7.2280977
-@everywhere ρ1 = 0.9498492
-@everywhere σ1 = 6.62
+# Price scaling constant
+@everywhere pscale = 100.0
+@everywhere ω = 0.2703183
+# Price: price' = ρ0 + ρ1⋅p_ref + ɛ, ɛ~N(0,σ1^2)
+@everywhere ρ1 = 0.9411549
+@everywhere ρ0 = 0.2764826 + (ρ1-1.0)*log(pscale)
+#@everywhere ρ2 = 0.00025473
+@everywhere σ1 = 0.0536
 
 # Load all function
 @everywhere include("$(homedir())/Keurig/Scripts/Two-Step-Demand/Machine-Adoption/functions.jl")
+@everywhere include("$(homedir())/Keurig/Scripts/Two-Step-Demand/Machine-Adoption/functions-ML-LN-Bayes.jl")
 
-# Chebyshev Approximation Setup
-@everywhere nodes = 20; # Degree of Chebyshev Zeros (nodes)
-@everywhere order = 5; # Degree of Chebyshev Polynomials
-@everywhere (a, b) = (-10., 60.); # a need to be greater/equal to 1 for the function to be well behaved.
-(cnode, cweight)=gausschebyshev(nodes); # Interpolation Nodes
-tcnode = (cnode+1) * (b-a)/2 + a; # Transformed nodes
-
-W1 = zeros(Float64, nodes);
-Tmat = Float64[T(i,j) for i = 1:(order+1), j in cnode]; # Chebyshev Polynomial Matrix
-
-# Compute Value function
-if cons_av
-  W1coef = zeros(Float64, order+1)
+# Read estimation data
+if acadjust
+  hh_panel = readdlm("Data/Machine-Adoption/HW-MU-Panel.csv", ',', skipstart=1); # Household Machine Adoption Panel
 else
-  tol = 1e-8
-  err = 1;
-  nx = 0;
-  while (err > tol)
-      nx = nx+1;
-      W1n = W1V(W1)
-      err = sum(abs(W1n-W1))
-      println("Error is $(err), and interation is $(nx)")
-      W1 = W1n
-  end
-  W1coef = getcoef(W1)
+  hh_panel = readdlm("Data/Machine-Adoption/HW-MU-Panel-NoAdjust.csv", ',', skipstart=1); # Household Machine Adoption Panel
 end
-broad_mpi(:(W1coef = $W1coef))
-
-hh_panel = readdlm("Data/Machine-Adoption/HW-MU-Panel.csv", ',', skipstart=1); # Household Machine Adoption Panel
+hh_panel[:, 4] = log.(hh_panel[:, 4])
 
 # NA list
-None_NA_list=Array(Int64, 0)
+None_NA_list=Array{Int64}(0)
 for i in 1:size(hh_panel, 1)
   if (typeof(hh_panel[i,9]))<:Real
     push!(None_NA_list, i)
   end
 end
 hh_panel = hh_panel[None_NA_list, :];
+
 if test_run
-  hh_panel = hh_panel[1:100000, :];
+  indx = sort(sample(1:size(hh_panel)[1], 80000, replace = false))
+  hh_panel = hh_panel[indx, :];
 end
+
 (nr, nc) = size(hh_panel)
 chunk_size = ceil(Int, nr/length(np))
 @sync begin
@@ -107,17 +100,99 @@ end
 
 @everywhere purch_vec = convert(Array{Int64}, hh_panel[:, 9])
 @everywhere XMat = convert(Array{Float64}, hh_panel[:, [5, 6, 8]])
-@everywhere ZMat = hh_panel[:, vcat(10:15, 4)]
+@everywhere XMat[:, 1:2] = XMat[:, 1:2]./100
+@everywhere ZMat = hh_panel[:, vcat(10:15, 4)] # With a linear time trend
+# @everywhere ZMat = hh_panel[:, 10:15]
 @everywhere ZMat = sparse(convert(Array{Float64}, ZMat))
 @everywhere pbar_n2 =  ω * XMat[:,1] + (1-ω) * XMat[:,2];
-@everywhere SMat = transpose(hcat(ρ0 + ρ1 * pbar_n2, pbar_n2, α0 + α1 * XMat[:,3]))
+# @everywhere SMat = transpose(hcat(ρ0 + ρ1 * log.(pbar_n2) + ρ2 * log.(XMat[:,3].+1), pbar_n2, α0 + α1 * log.(XMat[:,3].+1)))
+@everywhere SMat = transpose(hcat(ρ0 + ρ1 * log.(pbar_n2), log.(pbar_n2), α0 + α1 * log.(XMat[:,3].+1)))
 @everywhere (nobs, n_x) = size(XMat)
 @everywhere n_z= size(ZMat)[2]
-
 @everywhere pbar_n2 = 0;
 @everywhere gc();
 
-@everywhere W1vec=W1fun(nobs)
+# Chebyshev Approximation Setup
+@everywhere delta_n = 15; # Degree of Chebyshev Zeros (nodes)
+@everywhere delta_order = [5]; # Degree of Chebyshev Polynomials
+delta_range = [maximum(XMat[:,3])*1.2, minimum(XMat[:,3])*0.8] # Range of option value
+broad_mpi(:(delta_range = $delta_range))
+@everywhere delta_nodes = chebyshev_nodes(delta_n, delta_range)
+W1 = zeros(Float64, delta_n);
+
+# Compute Value function
+if cons_av
+  delta_cheby_weights = zeros(Float64, delta_order+1)
+else
+  tol = 1e-8
+  err = 1;
+  nx = 0;
+  while (err > tol)
+      nx = nx+1;
+      delta_cheby_weights = chebyshev_weights(W1, delta_nodes, delta_order, delta_range)
+      W1n = W1V(delta_cheby_weights)
+      err = maximum(abs(W1n-W1))
+      println("Error is $(err), and interation is $(nx)")
+      W1 = W1n
+  end
+end
+broad_mpi(:(delta_cheby_weights = $delta_cheby_weights))
+@everywhere wappx(x::Real) = chebyshev_evaluate(delta_cheby_weights,[x],delta_order,delta_range)
+@everywhere W1Vec = [wappx(XMat[i,3]) for i in 1:nobs]
+
+# Chebyshev Approximation Settings of W function
+@everywhere n1 = 15;
+@everywhere n2 = 15;
+@everywhere n3 = 15;
+
+range_1 = [maximum(XMat[:,1])*1.2, minimum(XMat[:,1])*0.8]
+range_2 = [maximum(XMat[:,2])*1.2, minimum(XMat[:,2])*0.8]
+range_3 = [maximum(XMat[:,3])*1.2, minimum(XMat[:,3])*0.8]
+broad_mpi(:(range_1 = $range_1))
+broad_mpi(:(range_2 = $range_2))
+broad_mpi(:(range_3 = $range_3))
+@everywhere range = [range_1 range_2 range_3]
+
+@everywhere nodes_1 = chebyshev_nodes(n1,range_1)
+@everywhere nodes_2 = chebyshev_nodes(n2,range_2)
+@everywhere nodes_3 = chebyshev_nodes(n3,range_3)
+
+@everywhere order_tensor = [5, 5, 5]
+
+mgrid = Tuple{Int, Int, Int64}[]
+for i in 1:n1
+  for j in 1:n2
+    for k in 1:n3
+      push!(mgrid, (i,j,k))
+    end
+  end
+end
+
+# Value of adoption
+EW1x = zeros(Float64,n3);
+for i in 1:n3
+  EW1x[i] = wappx(nodes_3[i])
+end
+broad_mpi(:(EW1x = $EW1x))
+
+# Bellman Iteration
+tol = 1e-8;
+@everywhere sigma = [σ1, σ0];
+@everywhere w1_b = Array(Float64, nobs);
+@everywhere w0_b = Array(Float64, nobs);
+wgrid = zeros(Float64, n1,n2,n3)
+wgrid_new = SharedArray(Float64, n1, n2, n3);
+ExpectedW = zeros(Float64, n1,n2,n3)
+ll_w_grad = zeros(Float64, length(np), n_z)
+# Θ_0 = [-1000.73282815577369, 1.94909, 7.960764, 0.0001, 0.35536066706454367, -0.10823587535855583, 0.2486100147839871, 0.2248080375561089, 0.6206315818689631]
+# Θ_0 = [-762.079,1.774,10.7504, 0.13671037841663608026, 0.79119170457287690823, 0.35703443779432908478, 0.42949855017590554684, 0.01820777905828507501, -0.13282396850696606694]
+@everywhere κ = zeros(Float64, n_z)
+Θ_0 = [-9.53665, 1.17825, 0.0705927]
+Θ_a = [-9.53665, 1.17825, 0.0705927]
+380.464528 seconds (28.85 M allocations: 1.885 GiB, 0.12% gc time)
+julia> @time optimize(ll_int!, κ, NelderMead())
+120.464183 seconds (8.29 M allocations: 662.520 MiB, 0.45% gc time)
+# Here!!!!
 
 # MCMC Draws
 burnin = 0;

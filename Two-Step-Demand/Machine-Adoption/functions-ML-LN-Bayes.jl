@@ -84,7 +84,7 @@ function ll!(Θ_a::Vector)
         end
       end
       err = maximum(abs(wgrid_new-wgrid))
-      # println("error is $(err) with nx $(nx)")
+      println("error is $(err) with nx $(nx)")
       wgrid[:,:,:] = wgrid_new;
   end
   w_tensor = chebyshev_weights(wgrid, nodes_1, nodes_2, nodes_3, order_tensor, range);
@@ -138,6 +138,6 @@ function ll!(Θ_a::Vector)
   return llopt.minimum
 end
 
-function postd(l1::Real, l0::Real, theta1::Vector, theta0::Vector, bhat::Vector, sigb::Matrix)
-    return exp(l1 + log(pdf(MvNormal(bhat, sigb), theta1)) - l0 - log(pdf(MvNormal(bhat, sigb), theta0)))
+function postd(l1::Real, l0::Real, theta1::Vector, theta0::Vector, beta_prior::Distributions.MvNormal)
+    return exp(l1 + log(pdf(beta_prior, theta1)) - l0 - log(pdf(beta_prior, theta0)))
 end

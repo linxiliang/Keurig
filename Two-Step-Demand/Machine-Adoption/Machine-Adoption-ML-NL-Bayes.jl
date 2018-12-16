@@ -12,9 +12,10 @@ if remote
   # machines = [("bushgcn11", 12), ("bushgcn12", 12)]
   addprocs(machines; tunnel=true)
 else
-  addprocs(48; restrict=false)
+  addprocs(32; restrict=false)
 end
 np = workers()
+println("number of works is $(np)!")
 remotecall_fetch(rand, 2, 20) # Test worker
 
 function broad_mpi(expr::Expr)
@@ -50,15 +51,16 @@ else
 end
 
 # Reference Price: p_ref' = ω⋅price + (1-ω)⋅p_ref
+@everywhere pscale = 100.0 # Price scaling constant
 @everywhere ω = 0.2703183
-# Price: price' = ρ0 + ρ1⋅price + ɛ, ɛ~N(0,σ1^2)
-@everywhere ρ0 = 0.2764826
+# Price: price' = ρ0 + ρ1⋅p_ref + ɛ, ɛ~N(0,σ1^2)
 @everywhere ρ1 = 0.9411549
+@everywhere ρ0 = 0.2764826 + (ρ1-1.0)*log(pscale)
 #@everywhere ρ2 = 0.00025473
 @everywhere σ1 = 0.0536
 
 # Load all function
-@everywhere include("$(homedir())/Keurig/Scripts/Two-Step-Demand/Machine-Adoption/functions-ML-LN.jl")
+@everywhere include("$(homedir())/Keurig/Scripts/Two-Step-Demand/Machine-Adoption/functions-ML-LN-Bayes.jl")
 
 # Read estimation data
 if acadjust
@@ -69,7 +71,7 @@ end
 hh_panel[:, 4] = log.(hh_panel[:, 4])
 
 # NA list
-None_NA_list=Array(Int64, 0)
+None_NA_list=Array{Int64}(0)
 for i in 1:size(hh_panel, 1)
   if (typeof(hh_panel[i,9]))<:Real
     push!(None_NA_list, i)
@@ -77,10 +79,12 @@ for i in 1:size(hh_panel, 1)
 end
 
 hh_panel = hh_panel[None_NA_list, :];
+
 if test_run
-  indx = sort(sample(1:3757694, 80000, replace = false))
+  indx = sort(sample(1:size(hh_panel)[1], 80000, replace = false))
   hh_panel = hh_panel[indx, :];
 end
+
 (nr, nc) = size(hh_panel)
 chunk_size = ceil(Int, nr/length(np))
 @sync begin
@@ -174,8 +178,8 @@ broad_mpi(:(EW1x = $EW1x))
 # Bellman Iteration
 tol = 1e-8;
 @everywhere sigma = [σ1, σ0];
-@everywhere w1_b = Array(Float64, nobs);
-@everywhere w0_b = Array(Float64, nobs);
+@everywhere w1_b = Array{Float64}(nobs);
+@everywhere w0_b = Array{Float64}(nobs);
 wgrid = zeros(Float64, n1,n2,n3)
 wgrid_new = SharedArray(Float64, n1, n2, n3);
 ExpectedW = zeros(Float64, n1,n2,n3)
@@ -186,11 +190,60 @@ ll_w_grad = zeros(Float64, length(np), n_z)
 Θ_0 = [-9.53665, 1.17825, 0.0705927]
 # lopt = optimize(ll!, Θ_0, BFGS())
 
-tdist0 = MvNormal(theta0, H);
-tpdf =  pdf(tdist0, thtild);
-broad_mpi(:(tpdf=$tpdf));
-tpdf1 = tpdf;
-broad_mpi(:(tpdf1=$tpdf1));
+# MCMC Draws
+burnin = 0;
+thin   = 1;
+draws  = 10000;
+totdraws = draws*thin + burnin;
+npar = length(Θ_0)
+bhat = zeros(Float64, npar)
+sigb = eye(npar)*100
+beta_prior = MvNormal(bhat, sigb)
 
-# bopt = bboptimize(ll!; SearchRange = [(-50.0, 50.0), (0.001, 2.0), (0.001, 1.0)], Method = :de_rand_2_bin_radiuslimited)
-# [-963.879,-1.04279e-5,8.85431]
+# walk settings
+sigs = diagm([0.01, 0.01, 0.0001])
+walkdistr = MvNormal(zeros(n_x), sigs);
+
+# Store draws
+thatd = zeros(Float64, draws, npar);
+lld = zeros(Float64, draws);
+start_time = time_ns();
+
+# Start values
+theta0 = [-9.53665, 1.17825, 0.0705927]
+Θ_a = [-9.53665, 1.17825, 0.0705927]
+ll0 = -ll!(theta0)
+
+# MCMC algorithm
+for d=1:totdraws
+    # Proposed theta
+    theta1 = theta0 + rand(walkdistr)
+
+    # Get the new likelihood
+    ll1 = -ll!(theta1)
+
+    # Run MH step
+    alpha = min(1, postd(ll1, ll0, theta1, theta0, beta_prior))
+    if (rand()<=alpha)
+      theta0 = theta1
+      ll0 = ll1
+    end
+
+    # Store the posterior draws of mean betas and sigmas
+    if ((d > burnin) && (d % thin == 0))
+      indx = ceil(Int64, (d - burnin)/thin)
+      thatd[indx, :] = theta0
+      lld[indx] = ll0;
+    end
+
+    # Indicate the progress
+    elapsed_t = time_ns() - start_time;
+    @printf("%10.6f seconds has passed\n", elapsed_t/1e9)
+    println("Finished drawing $(d) out of $(totdraws), and likelihood $(ll0)")
+end
+
+writedlm("Data/Bayes-MCMC/Adoption-Coef-S-10000.csv", hcat(thatd, lld))
+
+
+
+hive -e "SELECT COUNT(*) FROM lbm_user_gender_up_probability_da	 WHERE dt == '2018-11-11' GROUP BY gender;

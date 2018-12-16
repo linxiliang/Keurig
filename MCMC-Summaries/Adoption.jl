@@ -3,12 +3,13 @@
 # Jan 2017
 
 #Set Directory
-cd("$(homedir())/Keurig");
+# cd("$(homedir())/Keurig");
+cd("/Volumes/SanDisk/Keurig");
 srand(12345678)
 
 # Load Packages
-using Distributions, FastGaussQuadrature, Calculus, PyPlot
-using QuantEcon:meshgrid
+using Distributions, FastGaussQuadrature, Calculus, Plots
+# using QuantEcon:meshgrid
 
 # Read the mcmcdraws
 theta = [-8.25372,-0.0168313,0.132642]
@@ -29,7 +30,8 @@ n_x = length(theta)
 
 ############
 # Load all function
-include("$(homedir())/Keurig/Scripts/Counterfactuals/functions.jl")
+# include("$(homedir())/Keurig/Scripts/Counterfactuals/functions.jl")
+include("Scripts/Counterfactuals/functions.jl")
 
 # Chebyshev Approximation Setup
 nodes = 20; # Degree of Chebyshev Zeros (nodes)
@@ -100,22 +102,19 @@ while (err > tol)
 end
 
 # X grid
-ngrid = 200
-pgrid = zeros(Float64, ngrid)
-mgrid = zeros(Float64, ngrid)
-pstep = (180-100)/ngrid
-mstep = 2/ngrid
-for i in 1:ngrid
-  pgrid[i] = 100+pstep*(i-1)
-  mgrid[i] = mstep*(i-1)
-end
+np_grid = 200
+nd_grid = 5
+pstep = (180-100)/np_grid
+pgrid = [100+pstep*(i-1) for i in 1:np_grid]
+mstep = log(2)/(nd_grid-1)
+mgrid = [exp(mstep*(i-1))-1 for i in 1:nd_grid]
 
-probv = zeros(Float64, ngrid, ngrid)
-for i in 1:ngrid
-  for j in 1:ngrid
+probv = zeros(Float64, np_grid, nd_grid)
+for i in 1:np_grid
+  for j in 1:nd_grid
     pbar =  ω * pgrid[i] + (1-ω) * 140.;
     pkc = ρ0 + ρ1 * pbar
-    smu = α0 + α1 * mgrid[j]
+    smu = α0 + α1 * log(mgrid[j]+1)
     s_dist = MvNormal([pkc, pbar, smu], sH)
     sden = pdf(s_dist, xtild)
     wnext = (sum(sden' * wtild)/sum(sden))
@@ -126,8 +125,61 @@ end
 probv = 1.-probv
 writedlm("/Users/xlin0/Desktop/ccp.csv", probv, ",")
 
-fig = figure(figsize=(8,6))
-ax = fig[:gca](projection="3d")
-ax[:set_zlim](0, 0.05)
-δ, Price = meshgrid(mgrid, pgrid)
-ax[:plot_surface](δ, Price, probv, rstride=2, cstride=2, cmap=ColorMap("jet"), alpha=0.7, linewidth=0.25)
+function enhenced_round(x, n)
+  x = round.(x, n)
+  println(x)
+  x = string.(x)
+  nx = length(x)
+  for i = 1:nx
+    nc_x = length(split(x[i], ".")[2])
+    nc_x<nx ? x[i] = x[i] * repeat("0", n-nc_x) : x[i]=x[i]
+    x[i] = "\\delta = " * x[i]
+  end
+  return x
+end
+
+ccp_fig = plot(pgrid, probv, style=:auto, xlab = "Price", ylab = "Adoption Probability",
+               label=enhenced_round(mgrid, 3))
+savefig(ccp_fig, "Tabfigs/MCMC-Summaries/figs/cpp_fig.pdf")
+
+
+# Numerical Hessian
+function n_grad(f::Function, x::Vector, delta::Vector)
+  nx = length(x)
+  grad = zeros(Float64, nx)
+  for i = 1:nx
+    y1 = copy(x); y2 = copy(x)
+    y1[i] = y1[i] - delta[i];  y2[i] = y2[i] + delta[i];
+    println(delta)
+    println(y1==y2)
+    println((f(y2) - f(y1))/(2*delta[i]))
+    grad[i] = (f(y2) - f(y1))/(2*delta[i])
+  end
+  return grad
+end
+
+# Jacobian
+function n_jacob(f::Function, x::Vector, delta::Vector)
+  nx = length(x)
+  nf = length(f(x))
+  jacob = zeros(Float64, nf, nx)
+  for i = 1:nx
+    y1 = copy(x); y2 = copy(x)
+    y1[i] = y1[i] - delta[i];  y2[i] = y2[i] + delta[i];
+    println(delta)
+    println(y1==y2)
+    println((f(y2) - f(y1))./(2*delta[i]))
+    jacob[:,i] = (f(y2) - f(y1))./(2*delta[i])
+  end
+  return jacob
+end
+
+
+x = rand(3)
+
+f(x) = log(x[1]) + log(x[2]) + log(x[1])*log(x[3])
+delta = 1e-12 * x
+f2(k) = n_grad(f, k, delta)
+# delta = 0.000000000000001*x
+n_grad(f, x, delta)
+n_jacob(f, x, delta)
