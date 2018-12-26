@@ -188,7 +188,7 @@ ll_w_grad = zeros(Float64, length(np), n_z)
 # Θ_0 = [-762.079,1.774,10.7504, 0.13671037841663608026, 0.79119170457287690823, 0.35703443779432908478, 0.42949855017590554684, 0.01820777905828507501, -0.13282396850696606694]
 @everywhere κ = zeros(Float64, n_z)
 Θ_0 = [-9.53665, 1.17825, 0.0705927]
-
+stopxxx
 # I need to optimize the running speed of NelderMead Routine.
 Θ_a = [-9.53665, 1.17825, 0.0705927]
 380.464528 seconds (28.85 M allocations: 1.885 GiB, 0.12% gc time)
