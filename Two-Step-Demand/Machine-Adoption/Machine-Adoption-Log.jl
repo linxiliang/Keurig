@@ -100,7 +100,7 @@ end
 
 @everywhere purch_vec = convert(Array{Int64}, hh_panel[:, 9])
 @everywhere XMat = convert(Array{Float64}, hh_panel[:, [5, 6, 8]])
-@everywhere XMat[:, 1:2] = XMat[:, 1:2]./100
+@everywhere XMat[:, 1:2] = XMat[:, 1:2]./pscale
 @everywhere ZMat = hh_panel[:, vcat(10:15, 4)] # With a linear time trend
 # @everywhere ZMat = hh_panel[:, 10:15]
 @everywhere ZMat = sparse(convert(Array{Float64}, ZMat))
@@ -188,6 +188,8 @@ ll_w_grad = zeros(Float64, length(np), n_z)
 # Θ_0 = [-762.079,1.774,10.7504, 0.13671037841663608026, 0.79119170457287690823, 0.35703443779432908478, 0.42949855017590554684, 0.01820777905828507501, -0.13282396850696606694]
 @everywhere κ = zeros(Float64, n_z)
 Θ_0 = [-9.53665, 1.17825, 0.0705927]
+
+# I need to optimize the running speed of NelderMead Routine.
 Θ_a = [-9.53665, 1.17825, 0.0705927]
 380.464528 seconds (28.85 M allocations: 1.885 GiB, 0.12% gc time)
 julia> @time optimize(ll_int!, κ, NelderMead())
@@ -412,3 +414,42 @@ for d=1:totdraws
 end
 
 writedlm("Data/Bayes-MCMC/Adoption-Coef-MU-F40000.csv", hcat(thatd, lld))
+
+@everywhere function prob(v::Array{Float64, 2})
+  vexp = exp.(v)
+  vsum = sum(vexp, 2)
+  vprob = broadcast(/, vexp, vsum)
+  vprob = maximum(vprob, 2)
+  return(sum(vprob))
+end
+
+@everywhere function prob(v::DArray{Float64, 2})
+  vexp = exp.(v)
+  vsum = sum(vexp, 2)
+  vprob = broadcast(/, vexp, vsum)
+  vprob = maximum(vprob, 2)
+  return(sum(vprob))
+end
+
+
+start_time = time_ns();
+maximum(A)
+elapsed_t = time_ns() - start_time;
+@printf("%10.6f seconds has passed\n", elapsed_t/1e9)
+
+start_time = time_ns();
+maximum(AD)
+elapsed_t = time_ns() - start_time;
+@printf("%10.6f seconds has passed\n", elapsed_t/1e9)
+
+
+
+start_time = time_ns();
+prob(A)
+elapsed_t = time_ns() - start_time;
+@printf("%10.6f seconds has passed\n", elapsed_t/1e9)
+
+start_time = time_ns();
+prob(AD)
+elapsed_t = time_ns() - start_time;
+@printf("%10.6f seconds has passed\n", elapsed_t/1e9)

@@ -100,7 +100,7 @@ end
 
 @everywhere purch_vec = convert(Array{Int64}, hh_panel[:, 9])
 @everywhere XMat = convert(Array{Float64}, hh_panel[:, [5, 6, 8]])
-@everywhere XMat[:, 1:2] = XMat[:, 1:2]./100
+@everywhere XMat[:, 1:2] = XMat[:, 1:2]./pscale
 @everywhere ZMat = hh_panel[:, vcat(10:15, 4)] # With a linear time trend
 # @everywhere ZMat = hh_panel[:, 10:15]
 @everywhere ZMat = sparse(convert(Array{Float64}, ZMat))
