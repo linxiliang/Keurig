@@ -37,27 +37,27 @@ using Distributions, Optim, FastGaussQuadrature, Calculus, ChebyshevApprox, Stat
 broad_mpi(:(using Distributions, Optim, FastGaussQuadrature, Calculus, ChebyshevApprox, StatsBase, BlackBoxOptim;))
 
 # Parameter settings
-@everywhere β  = 0.995;
+@everywhere const β  = 0.995;
 # δ' = α0 + α1⋅δ + ϵ, ϵ~N(0,σ0^2)
 if acadjust
-  @everywhere α0 = 0.1323974;
-  @everywhere α1 = 0.91602396;
-  @everywhere σ0 = 0.5124003;
+  @everywhere const α0 = 0.1323974;
+  @everywhere const α1 = 0.91602396;
+  @everywhere const σ0 = 0.5124003;
 else
-  @everywhere α0 = 0.0115345;
-  @everywhere α1 = 0.9863566;
-  @everywhere σ0 = 0.1086;
+  @everywhere const α0 = 0.0115345;
+  @everywhere const α1 = 0.9863566;
+  @everywhere const σ0 = 0.1086;
 end
 
 # Reference Price: p_ref' = ω⋅price + (1-ω)⋅p_ref
 # Price scaling constant
-@everywhere pscale = 100.0
-@everywhere ω = 0.2703183
+@everywhere const pscale = 100.0
+@everywhere const ω = 0.2703183
 # Price: price' = ρ0 + ρ1⋅p_ref + ɛ, ɛ~N(0,σ1^2)
-@everywhere ρ1 = 0.9411549
-@everywhere ρ0 = 0.2764826 + (ρ1-1.0)*log(pscale)
+@everywhere const ρ1 = 0.9411549
+@everywhere const ρ0 = 0.2764826 + (ρ1-1.0)*log(pscale)
 #@everywhere ρ2 = 0.00025473
-@everywhere σ1 = 0.0536
+@everywhere const σ1 = 0.0536
 
 # Load all function
 @everywhere include("$(homedir())/Keurig/Scripts/Two-Step-Demand/Machine-Adoption/functions.jl")
@@ -451,5 +451,20 @@ elapsed_t = time_ns() - start_time;
 
 start_time = time_ns();
 prob(AD)
+elapsed_t = time_ns() - start_time;
+@printf("%10.6f seconds has passed\n", elapsed_t/1e9)
+
+start_time = time_ns();
+@sync begin
+  @parallel for (i,j,k) in mgrid
+    pbar_n2 =  ω * nodes_1[i] + (1-ω) * nodes_2[j];
+    # mu = [ρ0 + ρ1 * log(pbar_n2)+ρ2 * log(nodes_3[k]+1), α0 + α1 * log(nodes_3[k]+1)];
+    mu = [ρ0 + ρ1 * log(pbar_n2), α0 + α1 * log(nodes_3[k]+1)];
+    EW_v0 = β * hermiteint2d(w_tensor, mu, sigma, pbar_n2);
+    EW_v1 = Θ_a[1] - (Θ_a[2]^2) * nodes_1[i] + (Θ_a[3]^2) * EW1x[k];
+    wgrid_new[i, j, k] = log(exp(EW_v0) + exp(EW_v1))
+    # println("values of v0 $(EW_v0), and value of v1 $(EW_v1), and value w is $(wgrid_new[i, j, k])")
+  end
+end
 elapsed_t = time_ns() - start_time;
 @printf("%10.6f seconds has passed\n", elapsed_t/1e9)

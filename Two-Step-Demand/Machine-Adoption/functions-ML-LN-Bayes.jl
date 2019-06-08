@@ -108,7 +108,7 @@ function ll!(Θ_a::Vector)
   # Update the W0 value
   @sync begin
       for p in np
-          @async @spawnat p eval(:(wupdate!(Θ_a, w_tensor)))
+          @async @spawnat p eval(:(wupdate!(Θ_a, w_tensor))) # Too many channels may be used here!
       end
   end
 
@@ -141,3 +141,6 @@ end
 function postd(l1::Real, l0::Real, theta1::Vector, theta0::Vector, beta_prior::Distributions.MvNormal)
     return exp(l1 + log(pdf(beta_prior, theta1)) - l0 - log(pdf(beta_prior, theta0)))
 end
+
+# Fast logistic regression
+ll

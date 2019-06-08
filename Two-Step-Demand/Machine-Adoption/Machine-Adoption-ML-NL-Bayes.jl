@@ -1,6 +1,6 @@
 # Keurig Machine Adoption Estimation - Maximum Likelihood
 # Xiliang Lin
-# July 2017
+# May 2019
 
 # Setting for parallel computation
 test_run = false;
@@ -69,16 +69,6 @@ else
   hh_panel = readdlm("Data/Machine-Adoption/HW-MU-Panel-NoAdjust.csv", ',', skipstart=1); # Household Machine Adoption Panel
 end
 hh_panel[:, 4] = log.(hh_panel[:, 4])
-
-# NA list
-None_NA_list=Array{Int64}(0)
-for i in 1:size(hh_panel, 1)
-  if (typeof(hh_panel[i,9]))<:Real
-    push!(None_NA_list, i)
-  end
-end
-
-hh_panel = hh_panel[None_NA_list, :];
 
 if test_run
   indx = sort(sample(1:size(hh_panel)[1], 80000, replace = false))
@@ -243,7 +233,3 @@ for d=1:totdraws
 end
 
 writedlm("Data/Bayes-MCMC/Adoption-Coef-S-10000.csv", hcat(thatd, lld))
-
-
-
-hive -e "SELECT COUNT(*) FROM lbm_user_gender_up_probability_da	 WHERE dt == '2018-11-11' GROUP BY gender;
