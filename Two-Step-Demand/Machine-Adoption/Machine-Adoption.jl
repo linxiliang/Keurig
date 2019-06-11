@@ -4,7 +4,7 @@
 
 # Setting for parallel computation
 test_run = false;
-remote = true;
+remote = false;
 if remote
   addprocs(32, restrict=false)
   # machines = [("bushgcn02", 10), ("bushgcn03", 10), ("bushgcn04", 10), ("bushgcn05", 10), ("bushgcn06", 10)]
@@ -102,8 +102,8 @@ end
 @everywhere gc();
 
 # Load all function
-# @everywhere include("$(homedir())/Keurig/Scripts/Two-Step-Demand/Machine-Adoption/functions.jl")
-@everywhere include("Scripts/Two-Step-Demand/Machine-Adoption/functions.jl")
+@everywhere include("$(homedir())/Keurig/Scripts/Two-Step-Demand/Machine-Adoption/functions.jl")
+# @everywhere include("Scripts/Two-Step-Demand/Machine-Adoption/functions.jl")
 
 # Chebyshev Approximation Setup
 @everywhere delta_n = 15; # Degree of Chebyshev Zeros (nodes)
@@ -145,9 +145,9 @@ bhat = zeros(Float64, n_x)
 sigb = eye(n_x)*100
 
 # Propose a starting value and the random walk steps（why these settings?)
-@everywhere theta0 = [-10.2, -2.0, 10.0]
+theta0 = [-10.2, -2.0, 10.0]
 kappa0 = zeros(Float64, n_z)
-sigs = diagm([3.1, 0.3, 0.035])
+sigs = diagm([0.3, 0.3, 0.3])
 walkdistr = MvNormal(zeros(n_x), sigs);
 
 # Obtain the range of the state variables
@@ -156,9 +156,9 @@ pbard = Uniform(minimum(XMat[:,2]), maximum(XMat[:,2]))
 mud = Uniform(minimum(XMat[:,3]), maximum(XMat[:,3]))
 
 # IJC Approximation Settings
-@everywhere sH = diagm([3*σ1^2, 3*σ0^2, 3*σ0^2]);
+@everywhere sH = diagm([3.0*σ1^2, 3.0*σ0^2, 3.0*σ0^2]);
 @eval @everywhere H = 1/2 * $sigs # Kernal bandwidth
-@everywhere N_0 = 1000
+@everywhere N_0 = 100
 
 # Obtain the initial approximation grid for theta and given states
 thtild = theta0 .+ 1*rand(walkdistr, N_0); # theta grid
@@ -170,23 +170,12 @@ for i in 1:N_0
   pbar_n2 = ω * xtild[1, i] + (1-ω)*xtild[2, i]
   stild[:,i] = [ρ0 + ρ1*log(pbar_n2), log(pbar_n2), α0 + α1 * log(xtild[3, i]+1)]
 end
+# The distribution of next period appropriate log transformed states are
+# functions of last periods approxiated states' log transformation.
 txtild = copy(xtild); # Transformed x-grid for approximation purpose
 txtild[1, :] = log.(txtild[1, :]);
 txtild[2, :] = log.(txtild[2, :]);
 txtild[3, :] = log.(txtild[3, :] + 1); # log(delta + 1)
-
-# Obtain the kernal value
-tpdfm = zeros(Float64, N_0, N_0);
-spdfm = zeros(Float64, N_0, N_0);
-for i in 1:N_0
-  t_dist = MvNormal(thtild[:,i], H)
-  tpdfm[i, :] = pdf(t_dist, thtild)
-  s_dist = MvNormal(stild[:,i], sH) # It's stild since it represents the mean state variables
-  spdfm[i, :] = pdf(s_dist, txtild)
-end
-
-# The distribution of next period appropriate log transformed states are
-# functions of last periods approxiated states' log transformation.
 
 # Value if adopting
 EW1x = zeros(Float64, N_0);
@@ -200,7 +189,7 @@ nx = 0;
 while (err > tol)
     nx = nx+1;
     # Now approximate the next period W
-    wnext = ((spdfm.*tpdfm) * wtild)./(sum((spdfm.*tpdfm), 2)[:,1])
+    wnext = WApprox(thtild, thtild, H, stild, txtild, sH, wtild)
 
     # Obtain the Value for adopting
     EW1 = thtild[1,:] + thtild[2, :] .* xtild[1, :] + EW1x
@@ -214,50 +203,23 @@ while (err > tol)
 end
 
 # Broadcast the estimated values to all workers
-broad_mpi(:(thtild = $thtild));
-broad_mpi(:(xtild = $xtild));
-broad_mpi(:(txtild = $txtild));
-broad_mpi(:(stild = $stild));
-broad_mpi(:(wtild = $wtild));
+broad_mpi(:(thtild = $thtild))
+broad_mpi(:(txtild = $txtild))
+broad_mpi(:(wtild = $wtild))
 
-# param distributions and pdfs
-tdist0 = MvNormal(theta0, H);
-tpdf =  pdf(tdist0, thtild);
-broad_mpi(:(tpdf=$tpdf));
-tpdf1 = copy(tpdf); # Why is this needed?
-broad_mpi(:(tpdf1=$tpdf1));
+# Initialize or compute various wts and ww values
+# Storage of old states
+@sync broad_mpi(:(wts_old = zeros(nobs)))
+@sync broad_mpi(:(ww_old = zeros(nobs)))
+@sync broad_mpi(:(WApproxAll!($theta0, wts_old, ww_old))) # Compute the values
+@sync broad_mpi(:(w1_old = ($theta0[1] + ($theta0[2]) * XMat[:,1] + W1Vec)/abs($(theta0[3]))))
+@sync broad_mpi(:(delta_old = zeros(nobs)))
 
-# state distributions
-sdist = Array(Distributions.MvNormal{Float64,PDMats.PDMat{Float64,Array{Float64,2}},Array{Float64,1}},0)
-for i in 1:N_0
-    push!(sdist, MvNormal(txtild[:,i], sH))
-end
-@sync broad_mpi(:(sdist = $sdist))
-
-# Compute state pdfs
-@sync broad_mpi(:(spdf = spzeros(nobs, N_0))) # Sparse matrix
-@everywhere function sden!()
-    for i in 1:N_0
-        spdf[:, i] = pdf(sdist[i], SMat)
-        println("Current iteration is $i out of $(N_0)")
-    end
-end
-@sync broad_mpi(:(sden!()))
-
-# Compute the relevante vectors concerning theta0
-@sync broad_mpi(:(wts_old  = spdf * tpdf));
-@sync broad_mpi(:(ww_old = spdf * (tpdf .* wtild)));
-@sync broad_mpi(:(w1_old = (theta0[1] + theta0[2] * XMat[:,1] + W1Vec)/abs(theta0[3])));
-@sync broad_mpi(:(delta_old = Array{Float64}(nobs)))
-
-# Initialize storage in other processes
-@sync broad_mpi(:(wts = Array{Float64}(nobs)))
-@sync broad_mpi(:(ww = Array{Float64}(nobs)))
-@sync broad_mpi(:(w1_new = Array{Float64}(nobs)))
-@sync broad_mpi(:(delta_new = Array{Float64}(nobs)))
-# Push the transformed state variable to state distributions
-snew_dist = MvNormal(randn(n_x), sH)
-broad_mpi(:(snew_dist = $snew_dist))
+# Storage of new states
+@sync broad_mpi(:(wts_new = zeros(nobs)))
+@sync broad_mpi(:(ww_new = zeros(nobs)))
+@sync broad_mpi(:(w1_new = zeros(nobs)))
+@sync broad_mpi(:(delta_new = zeros(nobs)))
 
 # Initialize MCMC storage
 if controls
@@ -267,55 +229,39 @@ else
 end
 lld = zeros(Float64, draws);
 start_time = time_ns();
-for d=1:totdraws
-    # Proposed theta
-    theta1 = theta0 + rand(walkdistr)
-    broad_mpi(:(theta1 = $theta1))
 
+# Run the MCMC chain
+for d=1:totdraws
     if (d==5000)
-      @eval @everywhere H = 1/9 * $sigs
+        @eval @everywhere H = 1/9 * $sigs
     end
 
-    # Compute the pdfs
-    tdist1 = MvNormal(theta1, H);
-    broad_mpi(:(tdist1 = $tdist1))
-
-    # tnew pdf value
-    tnew = pdf(tdist1, theta0);
-    broad_mpi(:(tnew=$tnew))
+    # Proposed theta
+    theta1 = theta0 + rand(walkdistr)
 
     # Draw a state proposal
     x_i = [rand(pd), rand(pbard), rand(mud)]
     pbar_n2 = ω*x_i[1] + (1-ω)*x_i[2]
-    s_i = [ρ0 + ρ1 * log(pbar_n2), log(pbar_n2), α0 + α1 * log(x_i[3]+1)]
     tx_i = copy(x_i)
     tx_i[1] = log(tx_i[1]);
     tx_i[2] = log(tx_i[2]);
     tx_i[3] = log(tx_i[3] + 1); # log(delta + 1)
-
-    # Push the transformed state variable to state distributions
-    snew_dist = MvNormal(tx_i, sH)
-    broad_mpi(:(snew_dist = $snew_dist))
-
-    # Push s_i to the new values
-    @everywhere push!(sdist, snew_dist)
-    @everywhere shift!(sdist)
+    s_i = [ρ0 + ρ1 * log(pbar_n2), log(pbar_n2), α0 + α1 * log(x_i[3]+1)]
 
     # Approximate the expected value using s_i
-    w_i = WApprox(theta1, thtild, H, s_i, txtild, sH, wtild)
+    ew_i = WApprox(theta1, thtild, H, s_i, txtild, sH, wtild)
 
     # Bellman Iteration Once using x_i
-    wnew = W0V(theta1, x_i, w_i)
-    broad_mpi(:(wnew = $wnew))
+    wnew = W0V(theta1, x_i, ew_i)
 
-    # Update the draws storage (thtild -- theta matrix updated)
-    thtild[:, 1:(end-1)] = thtild[:, 2:end]
-    thtild[:, end] = theta1
-    broad_mpi(:(thtild[:, 1:(end-1)] = thtild[:, 2:end]))
-    broad_mpi(:(thtild[:, end] = theta1))
+    # Update W0 states
+    broad_mpi(:(WoldStatesUpdate!($theta1, $tx_i, $wnew, $theta0)))
 
-    # Update states
-    @sync broad_mpi(:(vupdate!()))
+    # Update IJC approximation states
+    @everywhere ApproxStateUpdate!($theta1, $tx_i, $wnew)
+
+    # Update deltas
+    broad_mpi(:(UpdateStateDeltas!($theta1, $tx_i, $wnew, $theta0)))
 
     # Compute likelihood for the old and new theta
     opt_old = optimize(logit_ll_old_agg, logit_grad_old_agg!, kappa0, BFGS())
@@ -325,7 +271,6 @@ for d=1:totdraws
     alpha = min(1, postd(-opt_new.minimum, -opt_old.minimum, theta1, theta0, bhat, sigb))
     if (rand()<=alpha)
       theta0 = theta1
-      @sync broad_mpi(:(theta0 = $theta1))
       ll0 = -opt_old.minimum
       if controls
         kappa0 = opt_new.minimizer

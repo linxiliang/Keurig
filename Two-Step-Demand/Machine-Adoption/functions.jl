@@ -35,55 +35,107 @@ function W1V(cweights::Array{Float64, 1})
 end
 
 function WApprox(θ1::Vector, θ0::Matrix, H::Matrix, s1::Vector, s0::Matrix, sH::Matrix, wvec::Vector)
-     cdist = MvNormal(θ1, H)
-     wts0 = pdf(cdist, θ0)
-     sdist = MvNormal(s1, sH)
-     wts1 = pdf(sdist, s0)
-     wts = wts0 .* wts1
-     wts = wts ./ sum(wts)
-     return (sum(wts .* wvec))
+  cdist = MvNormal(θ1, H)
+  wts0 = pdf(cdist, θ0)
+  sdist = MvNormal(s1, sH)
+  wts1 = pdf(sdist, s0)
+  wts = wts0 .* wts1
+  wts = wts ./ sum(wts)
+  return (sum(wts' * wvec))
+end
+
+function WApprox(θ1::Matrix, θ0::Matrix, H::Matrix, s1::Matrix, s0::Matrix, sH::Matrix, wvec::Vector)
+  n = size(θ1)[2]
+  approx_vec = zeros(n)
+  for i = 1:n
+    approx_vec[i] = WApprox(θ1[:,i], θ0, H, s1[:,i], s0, sH, wvec)
+  end
+  return approx_vec
 end
 
 function W0V(θ1::Vector, x::Vector, w::Float64)
      return abs(θ1[3]) * log(exp(β*w/abs(θ1[3])) + exp((θ1[1] + θ1[2] * x[1] + wappx(x[3]))/abs(θ1[3])))
 end
 
-# Compute the likelihood in each data.
-function vupdate!()
-   #Update weights and ww_value for old theta
-   snew = pdf(snew_dist, SMat)
-   wts_old[:] = wts_old - tpdf[1] * spdf[:,1] + tnew * snew;
-   ww_old[:] = ww_old - tpdf[1] * wtild[1] * spdf[:,1] + wnew * tnew * snew;
+# Update the density distributions
+function WoldStatesUpdate!(theta1::Array{Float64, 1}, tx_i::Array{Float64, 1},
+  w_i::Float64, theta0::Array{Float64, 1})
+  # Compute old pdf
+  tdist_old = MvNormal(thtild[:, 1], H)
+  tpdf_old = pdf(tdist_old, theta0)
+  sold_dist = MvNormal(txtild[:, 1], sH)
+  spdf_old = pdf(sold_dist, SMat)
 
-   # Update densities for states
-   spdf[:,:] = hcat(spdf[:, 2:end], snew);
-   shift!(tpdf);
-   push!(tpdf, tnew);
-   shift!(wtild);
-   push!(wtild, wnew);
-   shift!(sdist)
-   push!(sdist, snew_dist)
+  # Compute new pdf
+  tdist_new = MvNormal(theta1, H)
+  tpdf_new = pdf(tdist_new, theta0)
+  snew_dist = MvNormal(tx_i, sH)
+  spdf_new = pdf(snew_dist, SMat)
 
-   # Update pdf, weights, and ww_value for new theta
-   tpdf1[:] =  pdf(tdist1, thtild);
-   wts[:] = spdf * tpdf1;
-   ww[:] = spdf * (tpdf1 .* wtild);
+  # Update old weights
+  wts_old[:] = wts_old - tpdf_old * spdf_old + tpdf_new * spdf_new;
+  ww_old[:] = ww_old - tpdf_old * wtild[1] * spdf_old + w_i * tpdf_new * spdf_new;
+end
 
-   # Update expoential value of adoption for new theta
-   # w1_new[:] = (theta1[1] + theta1[2] * XMat[:,1] +  W1Vec)/abs(theta1[3]) + ZMat*kappa1
-   w1_new[:] = (theta1[1] + theta1[2] * XMat[:,1] +  W1Vec)/abs(theta1[3])
+function ApproxStateUpdate!(theta1::Array{Float64, 1}, tx_i::Array{Float64, 1}, w_i::Float64)
+  # Update the historical storage of approximation parameters
+  thtild[:, 1:(end-1)] = thtild[:, 2:end]
+  thtild[:, end] = theta1
+  txtild[:, 1:(end-1)] = txtild[:, 2:end]
+  txtild[:, end] = tx_i
+  wtild[1:(end-1)] = wtild[2:end]
+  wtild[end] = w_i
+end
 
-   # Approximation
-   Wa_old = ww_old./wts_old;
-   Wa_new = ww./wts;
+# Given theta, update wts and ww for all data
+function WApproxAll!(theta::Array{Float64, 1}, wts::Array{Float64, 1},
+                     ww::Array{Float64, 1})
+  tdist = MvNormal(theta, H)
+  tpdf =  pdf(tdist, thtild)
+  wts[:] = 0.0
+  ww[:] = 0.0
+  for i in 1:N_0
+    wts_i = tpdf[i] .* pdf(MvNormal(txtild[:,i], sH), SMat)
+    wts[:] += wts_i
+    ww[:] += wtild[i] .* wts_i
+  end
+end
 
-   # Compute exponential of value of not adopting
-   w0_old = β/abs(theta0[3]) .* Wa_old
-   w0_new = β/abs(theta1[3]) .* Wa_new
+# Update Deltas
+function UpdateStateDeltas!(theta1::Array{Float64, 1}, tx_i::Array{Float64, 1},
+  w_i::Float64, theta0::Array{Float64, 1})
 
-   # Compute the probability of waiting
-   delta_old[:] = w1_old - w0_old
-   delta_new[:] = w1_new - w0_new
+  # Update new w0s
+  WApproxAll!(theta1, wts_new, ww_new)
+
+  # Compute new expected value of waiting
+  Wa_old = ww_old./wts_old
+  Wa_new = ww_new./wts_new
+  w0_old = β/abs(theta0[3]) .* Wa_old
+  w0_new = β/abs(theta1[3]) .* Wa_new
+
+  # Compute the value of adoption for new theta
+  w1_new[:] = (theta1[1] + theta1[2] * XMat[:,1] +  W1Vec)/abs(theta1[3])
+
+  # Compute Updated Deltas
+  delta_old[:] = w1_old - w0_old
+  delta_new[:] = w1_new - w0_new
+end
+
+# Update only if accepted
+function supdate!()
+     w1_old[:] = w1_new;
+     wts_old[:] = wts_new;
+     ww_old[:] = ww_new;
+end
+
+# M-H functions to compute alpha
+function postd(l1::Real, l0::Real, theta1::Vector, theta0::Vector, bhat::Vector, sigb::Matrix)
+    return exp(l1 + log(pdf(MvNormal(bhat, sigb), theta1)) - l0 - log(pdf(MvNormal(bhat, sigb), theta0)))
+end
+
+function postd(l1::Real, l0::Real, theta1::Vector, theta0::Vector, kappa1::Vector, kappa0::Vector, bhat::Vector, sigb::Matrix)
+    return exp(l1 + log(pdf(MvNormal(bhat, sigb), vcat(theta1, kappa1))) - l0 - log(pdf(MvNormal(bhat, sigb), vcat(theta0, kappa0))))
 end
 
 # Distributed LL function for logistic regression - OLD parameters
@@ -147,24 +199,6 @@ function logit_grad_new_agg!(grad::Array{Float64,1}, κ::Array{Float64, 1})
   end
   grad[:] = sum(ll_new_grad_mat,2)[:,1]
 end
-
-# Update only if accepted
-function supdate!()
-     tpdf[:] = tpdf1;
-     w1_old[:] = w1_new;
-     wts_old[:] = wts;
-     ww_old[:] = ww;
-end
-
-# M-H functions to compute alpha
-function postd(l1::Real, l0::Real, theta1::Vector, theta0::Vector, bhat::Vector, sigb::Matrix)
-    return exp(l1 + log(pdf(MvNormal(bhat, sigb), theta1)) - l0 - log(pdf(MvNormal(bhat, sigb), theta0)))
-end
-
-function postd(l1::Real, l0::Real, theta1::Vector, theta0::Vector, kappa1::Vector, kappa0::Vector, bhat::Vector, sigb::Matrix)
-    return exp(l1 + log(pdf(MvNormal(bhat, sigb), vcat(theta1, kappa1))) - l0 - log(pdf(MvNormal(bhat, sigb), vcat(theta0, kappa0))))
-end
-
 
 # Fast Logistic regression
 function logit_ll(κ::Array{Float64, 1}, delta::Array{Float64, 1}, X::Array{Float64, 2}, Y::Array{Float64, 1})
