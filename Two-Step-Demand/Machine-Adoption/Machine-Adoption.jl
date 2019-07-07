@@ -12,7 +12,7 @@ if remote
   addprocs(machines; tunnel=true)
 else
   # addprocs(32; restrict=false)
-  addprocs(2; restrict=false)
+  addprocs(4; restrict=false)
 end
 np = workers()
 println("number of works is $(np)!")
@@ -142,12 +142,19 @@ npar = n_x + n_z;
 
 # Only use IJC to approximate theta, co-variates serve as auxilary variables.
 bhat = zeros(Float64, n_x)
-sigb = eye(n_x)*100
+bhat = [0.0, -1.0, 60]
+sigb = eye(n_x)*1000
 
 # Propose a starting value and the random walk steps（why these settings?)
-theta0 = [-10.2, -2.0, 10.0]
-kappa0 = zeros(Float64, n_z)
-sigs = diagm([0.3, 0.3, 0.3])
+# theta0 = [-10.2, -2.0, 10.0]
+# theta0 = [-8.04455, 1.5316, 81.6396]
+theta0 = [-7.84943, -2.0931745, 74.6788]
+# kappa0 = zeros(Float64, n_z)
+kappa0 = [0.461295, 0.974945, 0.64596, 0.294536, 0.0421079, -0.110592, -0.137983]
+# sigs = diagm([0.1, 0.1, 0.1])
+sigs = 1/3 * [[0.829575  0.255035  1.08045];
+              [0.255035  0.815286  0.139934];
+              [1.08045   0.139934  3.18221]]
 walkdistr = MvNormal(zeros(n_x), sigs);
 
 # Obtain the range of the state variables
@@ -156,9 +163,11 @@ pbard = Uniform(minimum(XMat[:,2]), maximum(XMat[:,2]))
 mud = Uniform(minimum(XMat[:,3]), maximum(XMat[:,3]))
 
 # IJC Approximation Settings
-@everywhere sH = diagm([3.0*σ1^2, 3.0*σ0^2, 3.0*σ0^2]);
-@eval @everywhere H = 1/2 * $sigs # Kernal bandwidth
-@everywhere N_0 = 100
+# @everywhere sH = diagm([3.0*σ1^2, 3.0*σ1^2, 3.0*σ0^2]);
+@everywhere sH = diagm([σ1^2, 1/100 * σ1^2, σ0^2]);
+@eval @everywhere H = 1/100 * $sigs # Kernal bandwidth
+# @eval @everywhere H = 1/2 * $sigs # Kernal bandwidth
+@everywhere N_0 = 5000
 
 # Obtain the initial approximation grid for theta and given states
 thtild = theta0 .+ 1*rand(walkdistr, N_0); # theta grid
@@ -232,9 +241,9 @@ start_time = time_ns();
 
 # Run the MCMC chain
 for d=1:totdraws
-    if (d==5000)
-        @eval @everywhere H = 1/9 * $sigs
-    end
+    # if (d==5000)
+    #    @eval @everywhere H = 1/9 * $sigs
+    # end
 
     # Proposed theta
     theta1 = theta0 + rand(walkdistr)
@@ -308,4 +317,10 @@ for d=1:totdraws
     println("Finished drawing $(d) out of $(totdraws)")
 end
 
-# writedlm("Data/Bayes-MCMC/Adoption-Coef-MU-F40000.csv", hcat(thatd, lld))
+writedlm("Data/Bayes-MCMC/Adoption-Coef-IJC-F20000.csv", hcat(thatd, lld))
+
+
+# Get the variance of each parameters
+x1 = [thatd[(i-1)*50 + 1, 1] for i = 101:400]
+x2 = [thatd[(i-1)*50 + 1, 2] for i = 101:400]
+x3 = [thatd[(i-1)*50 + 1, 3] for i = 101:400]

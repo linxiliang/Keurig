@@ -41,7 +41,7 @@ function WApprox(θ1::Vector, θ0::Matrix, H::Matrix, s1::Vector, s0::Matrix, sH
   wts1 = pdf(sdist, s0)
   wts = wts0 .* wts1
   wts = wts ./ sum(wts)
-  return (sum(wts' * wvec))
+  return (wts' * wvec)
 end
 
 function WApprox(θ1::Matrix, θ0::Matrix, H::Matrix, s1::Matrix, s0::Matrix, sH::Matrix, wvec::Vector)

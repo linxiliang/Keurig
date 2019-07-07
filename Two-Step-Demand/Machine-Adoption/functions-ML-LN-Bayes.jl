@@ -89,7 +89,7 @@ function ll!(Θ_a::Vector)
   end
   w_tensor = chebyshev_weights(wgrid, nodes_1, nodes_2, nodes_3, order_tensor, range);
 
- # Directly approximate the expected value of the next period W.
+  # Directly approximate the expected value of the next period W.
   for (i,j,k) in mgrid
     pbar_n2 =  ω * nodes_1[i] + (1-ω) * nodes_2[j];
     # mu = [ρ0 + ρ1 * log(pbar_n2) + ρ2 * log(nodes_3[k]+1), α0 + α1 * log(nodes_3[k]+1)];
@@ -141,6 +141,3 @@ end
 function postd(l1::Real, l0::Real, theta1::Vector, theta0::Vector, beta_prior::Distributions.MvNormal)
     return exp(l1 + log(pdf(beta_prior, theta1)) - l0 - log(pdf(beta_prior, theta0)))
 end
-
-# Fast logistic regression
-ll
