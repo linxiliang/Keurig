@@ -43,7 +43,7 @@ end
 function W1V(cweights::Array{Float64, 1})
    wappx(x::Real) = cheb_eval(cweights, [x], delta_order, delta_range)
    function wfun(ν::Real)
-       return ν + β * hermiteint(wappx, α0+α1*log(ν+1), σ0)
+       return ν + β * hermiteint(wappx, α0+α1*ν, σ0)
    end
    return map(wfun, delta_nodes)
 end
@@ -51,11 +51,11 @@ end
 function W0V(theta::Array{Float64,1}, cweights::Array{Float64, 3})
   (n1, n2, n3) = size(wgrid)
   wgrid_new = zeros(n1, n2, n3)
-  for i in 1:n1,  j in 1:n2, k in 1:n3
+  for i in 1:n1, j in 1:n2, k in 1:n3
     pbar_n2 =  ω * nodes_1[i] + (1-ω) * nodes_2[j];
     mu = [ρ0 + ρ1 * log(pbar_n2), α0 + α1 * log(nodes_3[k]+1)];
     EW_v0 = β * hermiteint2d(cweights, mu, sigma, pbar_n2);
-    EW_v1 = theta[1] + theta[2] * nodes_1[i] + wappx(nodes_3[k]); 
+    EW_v1 = theta[1] + theta[2] * nodes_1[i] + wappx(nodes_3[k]);
     wgrid_new[i, j, k] = abs(theta[3]) * log(exp(EW_v0/abs(theta[3])) + exp(EW_v1/abs(theta[3])))
   end
   return wgrid_new

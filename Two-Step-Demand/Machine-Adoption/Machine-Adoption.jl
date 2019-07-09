@@ -164,8 +164,8 @@ mud = Uniform(minimum(XMat[:,3]), maximum(XMat[:,3]))
 
 # IJC Approximation Settings
 # @everywhere sH = diagm([3.0*σ1^2, 3.0*σ1^2, 3.0*σ0^2]);
-@everywhere sH = diagm([σ1^2, 1/100 * σ1^2, σ0^2]);
-@eval @everywhere H = 1/100 * $sigs # Kernal bandwidth
+@everywhere sH = diagm([σ1^2, 1/25 * σ1^2, σ0^2]);
+@eval @everywhere H = 1/25 * $sigs # Kernal bandwidth
 # @eval @everywhere H = 1/2 * $sigs # Kernal bandwidth
 @everywhere N_0 = 5000
 
