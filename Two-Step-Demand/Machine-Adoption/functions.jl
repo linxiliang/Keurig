@@ -1,7 +1,7 @@
 # Functions
 (hermitenodes, hermitewts)=gausshermite(15);
-function hermiteint(f::Function, μ::Float64, σ::Float64)
-  return sqrt(1./pi) * sum(map(f, exp(sqrt(2.)*σ*hermitenodes + μ).- 1.) .* hermitewts);
+function hermiteint(f::Function, μ::Float64, σ::Float64) # Integrating over (exp(x)-1)
+  return sqrt(1./pi) * sum(map(f, exp.(sqrt(2.)*σ.*hermitenodes + μ).- 1.) .* hermitewts);
 end
 
 # Numerical Integration for independent normals.
@@ -54,7 +54,7 @@ function WApprox(θ1::Matrix, θ0::Matrix, H::Matrix, s1::Matrix, s0::Matrix, sH
 end
 
 function W0V(θ1::Vector, x::Vector, w::Float64)
-     return abs(θ1[3]) * log(exp(β*w/abs(θ1[3])) + exp((θ1[1] + θ1[2] * x[1] + wappx(x[3]))/abs(θ1[3])))
+  return abs(θ1[3]) * log(exp(β*w/abs(θ1[3])) + exp((θ1[1] + θ1[2] * x[1] + wappx(x[3]))/abs(θ1[3])))
 end
 
 # Update the density distributions

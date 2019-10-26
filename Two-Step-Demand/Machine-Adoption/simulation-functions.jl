@@ -1,13 +1,13 @@
 # Functions
 (hermitenodes, hermitewts)=gausshermite(15);
-function hermiteint(f::Function, μ::Float64, σ::Float64)
-  return sqrt(1./pi) * sum(map(f, exp(sqrt(2.)*σ*hermitenodes + μ).- 1.) .* hermitewts);
+function hermiteint(f::Function, μ::Float64, σ::Float64) # Integrating over (exp(x)-1)
+  return sqrt(1./pi) * sum(map(f, exp.(sqrt(2.)*σ.*hermitenodes + μ).- 1.) .* hermitewts);
 end
 
 # Numerical Integration for independent normals.
-function cheb_eval(w_tensor, x, order_tensor, range)
-  x_new = x .* ((range[1,:].>=x) .* (range[2,:].<=x)) .+ range[1,:] .* (range[1,:].<=x) .+  range[2,:] .* (range[2,:].>=x)
-  w = chebyshev_evaluate(w_tensor, x_new, order_tensor, range);
+function cheb_eval(w_tensor, x, order_tensor, range_s)
+  x_new = x .* ((range_s[1,:].>=x) .* (range_s[2,:].<=x)) .+ range_s[1,:] .* (range_s[1,:].<=x) .+  range_s[2,:] .* (range_s[2,:].>=x)
+  w = chebyshev_evaluate(w_tensor, x_new, order_tensor, range_s);
   return w
 end
 
@@ -20,32 +20,88 @@ function hermiteint2d(w_tensor::Array{Float64,3}, μ::Array{Float64,1}, σ::Arra
   EV = 0;
   for i in 1:nd
     for j in 1:nd
-      EV += hermitewts[i] * hermitewts[j] * cheb_eval(w_tensor, [xn[1, i], pbar, xn[2,j]], order_tensor, range);
+      EV += hermitewts[i] * hermitewts[j] * cheb_eval(w_tensor, [xn[1, i], pbar, xn[2,j]], order_tensor, range_s);
+    end
+  end
+  return EV*(sqrt(1./pi))^nx
+end
+
+# Two dimension integration - Pass Function
+function hermiteint2d(f::Function, μ::Array{Float64,1}, σ::Array{Float64,1}, pbar::Real)
+  nx = length(μ);
+  nd = length(hermitenodes);
+  xn = exp(sqrt(2.)*σ*hermitenodes' .+ μ);
+  xn[2,:] = xn[2,:] .- 1.0;
+  EV = 0;
+  for i in 1:nd
+    for j in 1:nd
+      EV += hermitewts[i] * hermitewts[j] * f([xn[1, i], pbar, xn[2,j]]);
     end
   end
   return EV*(sqrt(1./pi))^nx
 end
 
 # Monte Carlo Integration
-function  mcint2d(w_tensor::Array{Float64,3}, μ::Array{Float64,1}, σ::Array{Float64,1}, pbar::Real, N::Int64)
+function mcint2d(w_tensor::Array{Float64,3}, μ::Array{Float64,1}, σ::Array{Float64,1}, pbar::Real, N::Int64)
   EV = 0
   x_distr = MvNormal(μ, diagm(σ.^2))
   for i in 1:N
     x_i = rand(x_distr)
     x_i = exp.(x_i)
     x_i[2] = x_i[2] - 1.0
-    EV += cheb_eval(w_tensor, [x_i[1], pbar, x_i[2]], order_tensor, range);
+    EV += cheb_eval(w_tensor, [x_i[1], pbar, x_i[2]], order_tensor, range_s);
   end
   return EV/N
 end
 
-
 function W1V(cweights::Array{Float64, 1})
    wappx(x::Real) = cheb_eval(cweights, [x], delta_order, delta_range)
    function wfun(ν::Real)
-       return ν + β * hermiteint(wappx, α0+α1*ν, σ0)
+       return ν + β * hermiteint(wappx, α0+α1*log(ν+1), σ0)
    end
    return map(wfun, delta_nodes)
+end
+
+# function W1V(cweights::Array{Float64, 1})
+#    wappx(x::Real) = cheb_eval(cweights, [x], delta_order, delta_range)
+#    function wfun(ν::Real)
+#        return ν + β * hermiteint(wappx, α0+α1*ν, σ0)
+#    end
+#    return map(wfun, delta_nodes)
+# end
+
+function W0(x::Array{Float64, 1}, theta::Array{Float64,1}, cweights::Array{Float64, 3})
+  EV0 = β * cheb_eval(cweights, x, order_tensor, range_s)
+  EV1 = theta[1] + theta[2] * x[1] + wappx(x[3]);
+  W0 = abs(theta[3]) * log(exp(EV0/abs(theta[3])) + exp(EV1/abs(theta[3])))
+  return W0
+end
+
+function BellmanV0(theta::Array{Float64,1}, cweights::Array{Float64, 3})
+  (n1, n2, n3) = size(V0_grid)
+  V0_grid_new = zeros(n1, n2, n3)
+  W0fun(x::Array{Float64, 1}) = W0(x, theta, cweights)
+  for i in 1:n1, j in 1:n2, k in 1:n3
+    pbar_n2 =  ω * nodes_1[i] + (1-ω) * nodes_2[j];
+    mu = [ρ0 + ρ1 * log(pbar_n2), α0 + α1 * log(nodes_3[k]+1)];
+    V0_grid_new[i, j, k] = hermiteint2d(W0fun, mu, sigma, pbar_n2);
+  end
+  return V0_grid_new
+end
+
+# Parallel version
+function BellmanV0Par!(theta::Array{Float64,1}, cweights::Array{Float64, 3}, V0::SharedArray{Float64, 3})
+  (n1, n2, n3) = size(V0)
+  W0fun(x::Array{Float64, 1}) = W0(x, theta, cweights)
+  @sync @parallel for i in 1:n1
+    for j in 1:n2
+      for k in 1:n3
+        pbar_n2 =  ω * nodes_1[i] + (1-ω) * nodes_2[j];
+        mu = [ρ0 + ρ1 * log(pbar_n2), α0 + α1 * log(nodes_3[k]+1)];
+        V0[i, j, k] = hermiteint2d(W0fun, mu, sigma, pbar_n2);
+      end
+    end
+  end
 end
 
 function W0V(theta::Array{Float64,1}, cweights::Array{Float64, 3})
@@ -77,8 +133,9 @@ function W0Cheby(theta::Array{Float64,1}, s::Array{Float64,1}, cweights::Array{F
   mu = [ρ0 + ρ1 * log(pbar_n2), α0 + α1 * log(s[3]+1)];
   println(mu)
   EW0 = hermiteint2d(cweights, mu, sigma, pbar_n2);
-  EW0_temp = mcint2d(cweights, mu, sigma, pbar_n2, 100000);
-  return (EW0, EW0_temp)
+  EW1 = theta[1] + theta[2] * nodes_1[i] + wappx(nodes_3[k]);
+  W0 = abs(theta[3]) * log(exp(EW0/abs(theta[3])) + exp(EW1/abs(theta[3])))
+  return (W0, EW0, EW1)
 end
 
 function simProb(theta::Array{Float64,1}, s::Array{Float64,1}, cweights::Array{Float64, 3},

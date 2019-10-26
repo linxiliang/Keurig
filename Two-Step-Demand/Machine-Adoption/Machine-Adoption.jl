@@ -11,8 +11,8 @@ if remote
   machines = [("10.252.198.12", 32)]
   addprocs(machines; tunnel=true)
 else
-  # addprocs(32; restrict=false)
-  addprocs(4; restrict=false)
+  addprocs(32; restrict=false)
+  # addprocs(4; restrict=false)
 end
 np = workers()
 println("number of works is $(np)!")
@@ -157,28 +157,31 @@ sigs = 1/3 * [[0.829575  0.255035  1.08045];
               [1.08045   0.139934  3.18221]]
 walkdistr = MvNormal(zeros(n_x), sigs);
 
-# Obtain the range of the state variables
-pd = Uniform(minimum(XMat[:,1]), maximum(XMat[:,1]))
-pbard = Uniform(minimum(XMat[:,2]), maximum(XMat[:,2]))
-mud = Uniform(minimum(XMat[:,3]), maximum(XMat[:,3]))
-
 # IJC Approximation Settings
 # @everywhere sH = diagm([3.0*σ1^2, 3.0*σ1^2, 3.0*σ0^2]);
-@everywhere sH = diagm([σ1^2, 1/25 * σ1^2, σ0^2]);
-@eval @everywhere H = 1/25 * $sigs # Kernal bandwidth
+@everywhere sH = diagm([σ1^2, 1/9 * σ1^2, σ0^2]);
+@eval @everywhere H = 1/9 * $sigs # Kernal bandwidth
 # @eval @everywhere H = 1/2 * $sigs # Kernal bandwidth
-@everywhere N_0 = 5000
+@everywhere N_0 = 3000
+
+# Get Halton Draws
+hdraw = rhalton(N_0, n_x)
 
 # Obtain the initial approximation grid for theta and given states
 thtild = theta0 .+ 1*rand(walkdistr, N_0); # theta grid
 xtild = zeros(Float64, n_x, N_0); # x - grid
-stild = zeros(Float64, n_x, N_0); # future log of the state grid
-wtild = ones(Float64, N_0); # gdoption value grid
-for i in 1:N_0
-  xtild[:,i] = [rand(pd), rand(pbard), rand(mud)]
-  pbar_n2 = ω * xtild[1, i] + (1-ω)*xtild[2, i]
-  stild[:,i] = [ρ0 + ρ1*log(pbar_n2), log(pbar_n2), α0 + α1 * log(xtild[3, i]+1)]
+# for d = 1:n_x
+  # xtild[d, :] = crange(hdraw[:, d], minimum(XMat[:,d]) * 0.9 - 0.1, maximum(XMat[:,d]) * 1.1)
+# end
+for d = 1:N_0
+  r_i = sample(1:nobs)
+  xtild[:, d] = XMat[r_i, :]
 end
+
+pbar_n2 = ω .* xtild[1, :] .+ (1-ω) .* xtild[2, :]
+stild = hcat(ρ0 .+ ρ1 .*log.(pbar_n2), log.(pbar_n2), α0 .+ α1 .* log.(xtild[3, :].+1))'
+wtild = ones(Float64, N_0); # gdoption value grid
+
 # The distribution of next period appropriate log transformed states are
 # functions of last periods approxiated states' log transformation.
 txtild = copy(xtild); # Transformed x-grid for approximation purpose
@@ -249,7 +252,10 @@ for d=1:totdraws
     theta1 = theta0 + rand(walkdistr)
 
     # Draw a state proposal
-    x_i = [rand(pd), rand(pbard), rand(mud)]
+    # x_i = [rand(pd), rand(pbard), rand(mud)]
+    # Draw a x from XMat
+    r_i = sample(1:nobs)
+    x_i = XMat[r_i, :]
     pbar_n2 = ω*x_i[1] + (1-ω)*x_i[2]
     tx_i = copy(x_i)
     tx_i[1] = log(tx_i[1]);
