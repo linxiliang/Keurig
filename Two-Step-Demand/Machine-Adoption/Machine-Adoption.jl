@@ -11,7 +11,7 @@ if remote
   machines = [("10.252.198.12", 32)]
   addprocs(machines; tunnel=true)
 else
-  addprocs(32; restrict=false)
+  addprocs(4; restrict=false)
   # addprocs(4; restrict=false)
 end
 np = workers()
