@@ -1,6 +1,12 @@
 module DSimulation
 
-import Distributions
+# Dependencies
+import Distributions, ApproxFun, FastGaussQuadrature
+const Distr = Distributions
+const AF = ApproxFun
+const FGQ = FastGaussQuadrature
+
+# Export certain functions
 export user_profile, foo
 
 struct user_profile
@@ -35,6 +41,106 @@ struct action_space
   actions::Array{Int64, 1}
 end
 
+struct cheby_set_init
+  domain::AF.Interval
+  n::Int64
+end
+
+struct cheby_set
+  domain::AF.Chebyshev
+  points::Array{Float64}
+end
+
+# Methods
+function ErrEval(V1::Function, V2::Function, grid::Array{Array{Float64, 1}, 1})
+  sumerr2 = sum((map(V1, grid) .- map(V2, grid)).^2)
+  return(sumerr2)
+end
+
+function ErrEval(V1::Function, V1n::Function, grid::Array{Float64, 1})
+  sumerr2 = sum((map(V1, grid) .- map(V1n, grid)).^2)
+  return(sumerr2)
+end
+
+function ErrEval(V1::Function, V1n::Function, grid)
+  sumerr2 = sum((map(V1, grid) .- map(V1n, grid)).^2)
+  return(sumerr2)
+end
+
+# Solve for a fixed point
+grid = range(1, 5, step = .01)
+cset = cheby_set_init(AF.Interval(1,5), 20)
+cset = cheby_set(AF.Chebyshev(cset.domain),
+                 AF.points(AF.Chebyshev(cset.domain), cset.n))
+
+# Get approximation nodes
+function HermiteIntialize(n::Int64)
+  (nodes, wts) = FGQ.gausshermite(15);
+  hermite_set = (nodes = nodes, wts = wts)
+  return(hermite_set)
+end
+hermite_set = HermiteIntialize(15)
+param = (discount = 0.98, α0 = 0.01, α1 = 0.95, sigma_α = 0.10)
+
+function DeltaTransit(delta::Float64, param::NamedTuple)
+  mu = param.α0 + param.α1 * log(delta+1)
+  return(mu = mu, sigma=param.sigma_α)
+end
+
+function HermiteIntegrate(V1::Function, delta::Float64, param::NamedTuple, hermite_set::NamedTuple)
+  (mu, sigma) = DeltaTransit(delta, param)
+  _grid = exp.(sqrt(2.) * sigma * hermite_set.nodes .+ mu) .- 1.
+  _val = map(V1, _grid)
+  _est = sqrt(1. / pi) * sum(_val .* hermite_set.wts)
+  return(_est)
+end
+
+function MCIntegrate(V1::Function, delta::Float64, param::NamedTuple, n::Int64)
+  (mu, sigma) = DeltaTransit(delta, param)
+  _grid_distr = Normal(mu, sigma)
+  _grid = rand(_grid_distr, n)
+  _grid = exp.(_grid) .- 1.0
+  _val = mapreduce(V1, +, _grid)
+  est = _val/n
+  return(est)
+end
+
+# Define the dynamic equation
+f(x) = exp(x)
+fhat = AF.Fun(cset.domain, AF.transform(S, map(f, cset.points)))
+fhat_full(x) = AF.extrapolate(fhat, x)
+
+function DynamicEquation(V1::Function, param::NamedTuple, cset::cheby_set,
+  hermite_set::NamedTuple)
+  future_V1(delta::Float64) = HermiteIntegrate(V1, delta, param, hermite_set)
+  V1_iter(delta::Float64) = delta + param.discount * future_V1(delta)
+  V1_iter = AF.Fun(cset.domain, AF.transform(cset.domain, map(V1_iter, cset.points)))
+  V1_full(delta::Float64) = AF.extrapolate(fhat, delta)
+  return(V1_full)
+end
+
+# Deep re-currsions are not permitted in julia
+tol = 1e-10
+err = 1
+V1(delta::Float64) = 0.0
+while(err >= tol)
+  V1n = DynamicEquation(V1, param, cset, hermite_set)
+  err = ErrEval(V1, V1n, grid)
+  println("Current error is $(err)")
+  V1(delta::Float64) = V1n(delta)
+end
+
+
+
+S = Chebyshev(1..2);
+
+p = points(S,20); # the default grid
+
+v = exp.(p);      # values at the default grid
+
+f = Fun(S,ApproxFun.transform(S,v));
+
+
 # Currently, state transition is not a function of a, but in general should be
 function StateTransit(s::Array{Float64, 1}, param::NamedTuple)
   pbar_n2 =  param.ω * s[1] + (1 - param.ω) * s[2];
@@ -58,22 +164,34 @@ struct dynamic_system
   StateTransit::Function # Given state, transition to next state distribution
 end
 
+function adoption_value_iterate(V1, param)
+  s_next_distr(s) = ds.StateTransit(s, param)
+  V1_new(delta) = delta + integrate(V1, delta)
+end
 actions::Array{Int64, 1} # Discrete actions
 state::Array{Int64, 1}
 
-function Bellman(V::Function, s::Array{Float64, 1}, ds::dynamic_system)
+function Bellman(W::Function, ds::dynamic_system)
   # Get the distribution of next period's state
-  s_next_distr = ds.StateTransit(s, param)
-
+  s_next_distr(s) = ds.StateTransit(s, param)
+  s::Array{Float64, 1}
   # Bellman Iteration
+  # Waiting Value
+  expected_waiting_value(s) = integrate(W, s, param)
+  # Adoption Value
+  adoption_value(s) =  adopt_value(s, param)
 
-  new_V(s) = u(s, a) + discount * int(V(x), state_transition)
+  log(exp(discount*W(s)) +)
+  new_W(s) = V(s, a) + discount * int(V(x), state_transition)
+
 end
+
+
 
 function ErrEval(V1::Function, V2::Function, grid::Array{Array{Float64, 1}, 1})
   sumerr2 = sum((map(V1, grid) .- map(V2, grid)).^2)
   return(sumerr2)
-end
+en
 
 function ValueFuntionIterate(V1, u, state, discount, tol = 1e-10)
   # Value function iteration until error is less than tolerance
@@ -100,6 +218,7 @@ foo(a::MyType) = bar(a.x) + 1
 
 end
 (hermitenodes, hermitewts)=gausshermite(15);
+hermite
 function hermiteint(f::Function, μ::Float64, σ::Float64)
   return sqrt(1./pi) * sum(map(f, exp(sqrt(2.)*σ*hermitenodes + μ).- 1.) .* hermitewts);
 end
