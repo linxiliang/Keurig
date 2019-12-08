@@ -67,20 +67,12 @@ function ErrEval(V1::Function, V1n::Function, grid)
   return(sumerr2)
 end
 
-# Solve for a fixed point
-grid = range(1, 5, step = .01)
-cset = cheby_set_init(AF.Interval(1,5), 20)
-cset = cheby_set(AF.Chebyshev(cset.domain),
-                 AF.points(AF.Chebyshev(cset.domain), cset.n))
-
 # Get approximation nodes
 function HermiteIntialize(n::Int64)
   (nodes, wts) = FGQ.gausshermite(15);
   hermite_set = (nodes = nodes, wts = wts)
   return(hermite_set)
 end
-hermite_set = HermiteIntialize(15)
-param = (discount = 0.98, α0 = 0.01, α1 = 0.95, sigma_α = 0.10)
 
 function DeltaTransit(delta::Float64, param::NamedTuple)
   mu = param.α0 + param.α1 * log(delta+1)
@@ -105,11 +97,6 @@ function MCIntegrate(V1::Function, delta::Float64, param::NamedTuple, n::Int64)
   return(est)
 end
 
-# Define the dynamic equation
-f(x) = exp(x)
-fhat = AF.Fun(cset.domain, AF.transform(S, map(f, cset.points)))
-fhat_full(x) = AF.extrapolate(fhat, x)
-
 function DynamicEquation(V1::Function, param::NamedTuple, cset::cheby_set,
   hermite_set::NamedTuple)
   future_V1(delta::Float64) = HermiteIntegrate(V1, delta, param, hermite_set)
@@ -119,27 +106,37 @@ function DynamicEquation(V1::Function, param::NamedTuple, cset::cheby_set,
   return(V1_full)
 end
 
+function DynamicIteration(V1::Function, param::NamedTuple, cset::cheby_set,
+    hermite_set::NamedTuple, tol::Float64)
+    err = 1.0
+    while (err > tol)
+        V1n = DynamicEquation(V1, param, cset, hermite_set)
+        err = ErrEval(V1, V1n, grid)
+        println("Current error is $(err)")
+        V1(delta::Float64) = V1n(delta)
+    end
+    return(V1)
+end
+
+# Solve for a fixed point
+grid = range(1, 5, step = .01)
+cset = cheby_set_init(AF.Interval(1,5), 20)
+cset = cheby_set(AF.Chebyshev(cset.domain),
+                 AF.points(AF.Chebyshev(cset.domain), cset.n))
+hermite_set = HermiteIntialize(15)
+
+
 # Deep re-currsions are not permitted in julia
 tol = 1e-10
 err = 1
 V1(delta::Float64) = 0.0
-while(err >= tol)
+while (err >= tol)
   V1n = DynamicEquation(V1, param, cset, hermite_set)
   err = ErrEval(V1, V1n, grid)
   println("Current error is $(err)")
-  V1(delta::Float64) = V1n(delta)
+  V1(delta::Float64) = copy(V1n(delta))
 end
-
-
-
-S = Chebyshev(1..2);
-
-p = points(S,20); # the default grid
-
-v = exp.(p);      # values at the default grid
-
-f = Fun(S,ApproxFun.transform(S,v));
-
+# Second iteration directly gives 0. 
 
 # Currently, state transition is not a function of a, but in general should be
 function StateTransit(s::Array{Float64, 1}, param::NamedTuple)
@@ -404,3 +401,9 @@ function supdate!()
      wts_old[:] = wts_new;
      ww_old[:] = ww_new;
 end
+
+
+param = (discount = 0.98, α0 = 0.01, α1 = 0.95, sigma_α = 0.10)
+f(x) = exp(x)
+fhat = AF.Fun(cset.domain, AF.transform(cset.domain, map(f, cset.points)))
+fhat_full(x) = AF.extrapolate(fhat, x)
