@@ -51,6 +51,12 @@ struct cheby_set
   points::Array{Float64}
 end
 
+struct cheby_fun
+  domain::AF.Chebyshev
+  points::Array{Float64}
+  coef::Array{Float64}
+end
+
 # Methods
 function ErrEval(V1::Function, V2::Function, grid::Array{Array{Float64, 1}, 1})
   sumerr2 = sum((map(V1, grid) .- map(V2, grid)).^2)
@@ -97,25 +103,36 @@ function MCIntegrate(V1::Function, delta::Float64, param::NamedTuple, n::Int64)
   return(est)
 end
 
-function DynamicEquation(V1::Function, param::NamedTuple, cset::cheby_set,
-  hermite_set::NamedTuple)
+function DynamicEquation(V1::Function, param::NamedTuple, cset::cheby_set, hermite_set::NamedTuple)
   future_V1(delta::Float64) = HermiteIntegrate(V1, delta, param, hermite_set)
   V1_iter(delta::Float64) = delta + param.discount * future_V1(delta)
-  V1_iter = AF.Fun(cset.domain, AF.transform(cset.domain, map(V1_iter, cset.points)))
-  V1_full(delta::Float64) = AF.extrapolate(fhat, delta)
-  return(V1_full)
+  new_coef = AF.transform(cset.domain, map(V1_iter, cset.points))
+  return(cheby_fun(cset.domain, cset.points, new_coef))
+end
+
+function DynamicEquation(cfun::cheby_fun, param::NamedTuple, hermite_set::NamedTuple)
+  V1 = AF.Fun(cfun.domain, cfun.coef)
+  V1_full(delta::Float64) = AF.extrapolate(V1, delta)
+  future_V1(delta::Float64) = HermiteIntegrate(V1, delta, param, hermite_set)
+  V1_iter(delta::Float64) = delta + param.discount * future_V1(delta)
+  new_coef = AF.transform(cfun.domain, map(V1_iter, cfun.points))
+  return(cheby_fun(cfun.domain, cfun.points, new_coef))
 end
 
 function DynamicIteration(V1::Function, param::NamedTuple, cset::cheby_set,
     hermite_set::NamedTuple, tol::Float64)
     err = 1.0
+    V1_cheby = DynamicEquation(V1, param, cset, hermite_set)
     while (err > tol)
-        V1n = DynamicEquation(V1, param, cset, hermite_set)
-        err = ErrEval(V1, V1n, grid)
-        println("Current error is $(err)")
-        V1(delta::Float64) = V1n(delta)
+        V1n = DynamicEquation(V1_cheby, param, hermite_set)
+        err = ErrEval(AF.Fun(V1_cheby.domain, V1_cheby.coef),
+                      AF.Fun(V1n.domain, V1n.coef), grid)
+        # println("Current error is $(err)")
+        V1_cheby = V1n
     end
-    return(V1)
+    V1_new = AF.Fun(V1_cheby.domain, V1_cheby.coef)
+    V1_full(delta::Float64) = AF.extrapolate(V1_new, delta)
+    return(V1_full)
 end
 
 # Solve for a fixed point
@@ -125,26 +142,23 @@ cset = cheby_set(AF.Chebyshev(cset.domain),
                  AF.points(AF.Chebyshev(cset.domain), cset.n))
 hermite_set = HermiteIntialize(15)
 
-
-# Deep re-currsions are not permitted in julia
+# Value function iteration for adoption
 tol = 1e-10
 err = 1
-V1(delta::Float64) = 0.0
-while (err >= tol)
-  V1n = DynamicEquation(V1, param, cset, hermite_set)
-  err = ErrEval(V1, V1n, grid)
-  println("Current error is $(err)")
-  V1(delta::Float64) = copy(V1n(delta))
-end
-# Second iteration directly gives 0. 
+V1_init(delta::Float64) = 0.0
+V1 = DynamicIteration(V1_init, param, cset, hermite_set, tol)
 
+# Coding the state transitions! 
 # Currently, state transition is not a function of a, but in general should be
 function StateTransit(s::Array{Float64, 1}, param::NamedTuple)
   pbar_n2 =  param.ω * s[1] + (1 - param.ω) * s[2];
   mu = [param.ρ0 + param.ρ1 * log(pbar_n2), param.α0 + param.α1 * log(s[3]+1)]
-  s_next_distr = state_distribution(mu, param.sigma)
+  s_next_distr = state_distribution(mu, param.sigma_α)
   return(s_next_distr)
 end
+
+param = (discount = 0.98, α0 = 0.01, α1 = 0.95, sigma_α = 0.10, ω = 0.2816747,
+         ρ0 = 7.1280045, ρ1 = 0.9504942, sigma_p = 6.593)
 
 function U(a::Int64, s::Array{Float64,1}, theta::Array{Float64,1})
   if (a = 0)
@@ -154,12 +168,37 @@ function U(a::Int64, s::Array{Float64,1}, theta::Array{Float64,1})
   end
 end
 
+# Adoption value
+function W1V(cweights::Array{Float64, 1})
+   wappx(x::Real) = cheb_eval(cweights, [x], delta_order, delta_range)
+   function wfun(ν::Real)
+       return ν + β * hermiteint(wappx, α0+α1*log(ν+1), σ0)
+   end
+   return map(wfun, delta_nodes)
+end
+
+function W0V(theta::Array{Float64,1}, cweights::Array{Float64, 3})
+  (n1, n2, n3) = size(wgrid)
+  wgrid_new = zeros(n1, n2, n3)
+  for i in 1:n1,  j in 1:n2, k in 1:n3
+    pbar_n2 =  ω * nodes_1[i] + (1-ω) * nodes_2[j];
+    mu = [ρ0 + ρ1 * log(pbar_n2), α0 + α1 * log(nodes_3[k]+1)];
+    EW_v0 = β * hermiteint2d(cweights, mu, sigma, pbar_n2);
+    EW_v1 = theta[1] + theta[2] * nodes_1[i] + wappx(nodes_3[k]);
+    wgrid_new[i, j, k] = abs(theta[3]) * log(exp(EW_v0/abs(theta[3])) + exp(EW_v1/abs(theta[3])))
+  end
+  return wgrid_new
+end
+
+
 struct dynamic_system
   discount::Float64
   param::NamedTuple
   U::Function # Period period utility, function of action and state
   StateTransit::Function # Given state, transition to next state distribution
 end
+
+
 
 function adoption_value_iterate(V1, param)
   s_next_distr(s) = ds.StateTransit(s, param)
@@ -403,7 +442,15 @@ function supdate!()
 end
 
 
-param = (discount = 0.98, α0 = 0.01, α1 = 0.95, sigma_α = 0.10)
+param = (discount = 0.98, α0 = 0.01, α1 = 0.95, sigma_α = 0.10, ω = 0.2816747,
+         ρ0 = 7.1280045, ρ1 = 0.9504942, sigma_p = 6.593)
 f(x) = exp(x)
 fhat = AF.Fun(cset.domain, AF.transform(cset.domain, map(f, cset.points)))
 fhat_full(x) = AF.extrapolate(fhat, x)
+
+
+@everywhere ω = 0.2816747
+# Price: price' = ρ0 + ρ1⋅price + ɛ, ɛ~N(0,σ1^2)
+@everywhere ρ0 = 7.1280045
+@everywhere ρ1 = 0.9504942
+@everywhere σ1 = 6.593
